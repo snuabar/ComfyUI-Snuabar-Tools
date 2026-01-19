@@ -92,6 +92,7 @@ class StringFormatter(io.ComfyNode):
             outputs=[
                 io.String.Output(),
             ],
+            description="用于格式化字符串的工具节点。",
         )
 
     @classmethod
