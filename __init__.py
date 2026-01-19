@@ -1,7 +1,12 @@
+import sys
+import os
+
 from typing_extensions import override
 
 from comfy_api.latest import ComfyExtension, io
-from custom_nodes.SnuabarTools.Formatter import StringFormatter
+
+sys.path.append(os.path.dirname(__file__))
+from Formatter import StringFormatter
 
 
 class SnuabarToolsExtension(ComfyExtension):
