@@ -1,0 +1,2 @@
+
+temp_image = None
