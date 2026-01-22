@@ -1,0 +1,137 @@
+{
+  "1": {
+    "inputs": {
+      "text": "",
+      "嵌入提示词": null,
+      "clip": [
+        "3",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "positive"
+    }
+  },
+  "2": {
+    "inputs": {
+      "width": 512,
+      "height": 512,
+      "batch_size": 1
+    },
+    "class_type": "EmptyLatentImage",
+    "_meta": {
+      "title": "空Latent图像"
+    }
+  },
+  "3": {
+    "inputs": {
+      "ckpt_name": "realisian_v60.safetensors"
+    },
+    "class_type": "CheckpointLoaderSimple",
+    "_meta": {
+      "title": "Checkpoint加载器（简易）"
+    }
+  },
+  "4": {
+    "inputs": {
+      "samples": [
+        "5",
+        0
+      ],
+      "vae": [
+        "3",
+        2
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE解码"
+    }
+  },
+  "5": {
+    "inputs": {
+      "seed": [
+        "11",
+        0
+      ],
+      "steps": 20,
+      "cfg": 8,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "denoise": 1,
+      "model": [
+        "3",
+        0
+      ],
+      "positive": [
+        "1",
+        0
+      ],
+      "negative": [
+        "12",
+        0
+      ],
+      "latent_image": [
+        "2",
+        0
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "K采样器"
+    }
+  },
+  "6": {
+    "inputs": {
+      "filename_prefix": [
+        "7",
+        0
+      ],
+      "images": [
+        "4",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "保存图像"
+    }
+  },
+  "7": {
+    "inputs": {
+      "string_field": "%date:yyyyMMdd_hhmmss%_{arg1}",
+      "arg1": [
+        "11",
+        0
+      ]
+    },
+    "class_type": "SnuabarStringFormatter",
+    "_meta": {
+      "title": "StringFormatter"
+    }
+  },
+  "11": {
+    "inputs": {
+      "seed": 836518032935505
+    },
+    "class_type": "Seed_",
+    "_meta": {
+      "title": "随机种子"
+    }
+  },
+  "12": {
+    "inputs": {
+      "text": "",
+      "嵌入提示词": null,
+      "clip": [
+        "3",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "negative"
+    }
+  }
+}

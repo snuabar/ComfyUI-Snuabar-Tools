@@ -1,33 +1,15 @@
 import datetime
-import sys
-import os
-import time
+import os.path
 from typing import Any
 
 from comfy_api.latest import io
-from my_server.ai_image_server import server, NetParams
+from my_server.ai_image_server import net_result, net_params
 
 
 class NetParamNote(io.ComfyNode):
 
-    param: NetParams = None
-
     def __init__(self):
         io.ComfyNode.__init__(self)
-        # 检查服务器状态
-        if not server.is_alive():
-            print("=" * 60)
-            print("AI图像生成服务器")
-            print("=" * 60)
-
-            # 启动服务器（非阻塞）
-            if server.start():
-                print(f"✓ 服务器已启动")
-                print(f"本地访问: http://127.0.0.1:8000")
-                print(f"局域网访问: {server.get_server_url()}")
-                print("=" * 60)
-            else:
-                print("✗ 服务器启动失败")
 
     @classmethod
     def define_schema(cls) -> io.Schema:
@@ -58,10 +40,46 @@ class NetParamNote(io.ComfyNode):
 
     @classmethod
     def execute(cls) -> io.NodeOutput:
-        if server:
-            return io.NodeOutput(server.params.prompt, server.params.seed, server.params.img_width, server.params.img_height)
+        if net_params is not None:
+            return io.NodeOutput(
+                net_params.prompt,
+                net_params.seed,
+                net_params.img_width,
+                net_params.img_height
+            )
         return io.NodeOutput()
 
     @classmethod
     def fingerprint_inputs(cls) -> Any:
-        return server.params
+        return f"{datetime.datetime.now()}"
+
+
+class NetResultNote(io.ComfyNode):
+
+    def __init__(self):
+        io.ComfyNode.__init__(self)
+
+    @classmethod
+    def define_schema(cls) -> io.Schema:
+        return io.Schema(
+            node_id="snuabar.net.result.note",
+            display_name="Net Result",
+            category="SnuabarTools",
+            inputs=[
+                io.String.Input(
+                    id='output_file',
+                    display_name='输出文件路径',
+                ),
+            ],
+        )
+
+    @classmethod
+    def execute(cls, output_file) -> io.NodeOutput:
+        if net_result is not None:
+            net_result.status = 'success' if os.path.exists(output_file) else 'fail'
+            net_result.file_path = output_file
+        return io.NodeOutput()
+
+    @classmethod
+    def fingerprint_inputs(cls) -> Any:
+        return f"{datetime.datetime.now()}"

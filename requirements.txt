@@ -1,3 +1,5 @@
 fastapi
 uvicorn
 pydantic
+opencv-python
+websockets

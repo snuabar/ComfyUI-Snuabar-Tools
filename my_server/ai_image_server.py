@@ -1,23 +1,101 @@
 # ai_image_server_thread.py
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+import json
+import logging
+import os.path
+import socket
+import threading
+import urllib
+import urllib.parse
+import urllib.request
+import uuid
+from datetime import datetime
+from pathlib import Path
+from typing import Optional, List
+
+import uvicorn
+import websockets
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-from typing import Optional, List
-import uvicorn
-import socket
-import uuid
-import os
-import json
-import asyncio
-from datetime import datetime
-import logging
-import threading
-from pathlib import Path
-import time
+
+import prompts
+
+common_functions = {}
 
 # 设置日志
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+server_address = "127.0.0.1:8188"
+
+
+def queue_prompt(prompt, client_id, prompt_id):
+    p = {"prompt": prompt, "client_id": client_id, "prompt_id": prompt_id}
+    data = json.dumps(p).encode('utf-8')
+    req = urllib.request.Request("http://{}/prompt".format(server_address), data=data)
+    return urllib.request.urlopen(req)
+
+
+def get_image(filename, subfolder, folder_type):
+    data = {"filename": filename, "subfolder": subfolder, "type": folder_type}
+    url_values = urllib.parse.urlencode(data)
+    with urllib.request.urlopen("http://{}/view?{}".format(server_address, url_values)) as response:
+        return response.read()
+
+
+def get_history(prompt_id):
+    with urllib.request.urlopen("http://{}/history/{}".format(server_address, prompt_id)) as response:
+        return json.loads(response.read())
+
+
+async def wait_finish(client_id, prompt_id):
+    uri = f"ws://{server_address}/ws?clientId={client_id}"
+    async with websockets.connect(uri) as websocket:
+        # 监听 WebSocket 消息
+        while True:
+            message = await websocket.recv()
+
+            if isinstance(message, str):
+                data = json.loads(message)
+                if data['type'] == 'executing':
+                    if (data['data']['node'] is None and
+                            data['data']['prompt_id'] == prompt_id):
+                        break  # 执行完成
+            else:
+                # 二进制预览数据
+                continue
+
+
+async def get_images(client_id, prompt, seed, width, height):
+    prompt_id = str(uuid.uuid4())
+    # 准备提示词
+    prompt_json = prompts.t2i_wan22(prompt, seed, width, height)
+
+    # 通过 HTTP 提交任务
+    response = queue_prompt(prompt_json, client_id, prompt_id)
+    if response and response.code == 200:
+        response.read()
+
+        await wait_finish(client_id, prompt_id)
+
+        # 获取结果
+        history = get_history(prompt_id)[prompt_id]
+        """提取图片数据"""
+        output_images = {}
+        for node_id in history['outputs']:
+            node_output = history['outputs'][node_id]
+            images_output = []
+            if 'images' in node_output:
+                for image in node_output['images']:
+                    image_data = get_image(
+                        image['filename'],
+                        image['subfolder'],
+                        image['type']
+                    )
+                    images_output.append(image_data)
+            output_images[node_id] = images_output
+            return output_images, prompt_id
+    return None, prompt_id
 
 
 def get_local_ip():
@@ -43,6 +121,19 @@ class NetParams:
         return self.prompt == other.prompt and self.seed == other.seed and self.img_width == other.img_width and self.img_height == other.img_height
 
 
+class NetResult:
+    def __init__(self):
+        self.file_path = None
+        self.status = None
+
+    def __eq__(self, other):
+        return self.file_path == other.file_path
+
+
+net_params = NetParams()
+net_result = NetResult()
+
+
 class AIImageServer:
     def __init__(self, host=None, port=0):
         """
@@ -59,7 +150,8 @@ class AIImageServer:
         self.server = None
         self.thread = None
         self.is_running = False
-        self.params = NetParams()
+        self.client_id = str(uuid.uuid4())
+        self.prompt_id = None
 
         # 创建FastAPI应用
         self.app = FastAPI(
@@ -76,10 +168,6 @@ class AIImageServer:
             allow_methods=["*"],
             allow_headers=["*"],
         )
-
-        # 创建图像存储目录
-        self.image_dir = Path("generated_images")
-        self.image_dir.mkdir(exist_ok=True)
 
         # 注册路由
         self.setup_routes()
@@ -165,7 +253,7 @@ class AIImageServer:
 
             # 模拟AI图像生成
             try:
-                image_path = await self.generate_ai_image(
+                await self.generate_ai_image(
                     prompt=request.prompt,
                     seed=request.seed or 0,
                     width=request.img_width,
@@ -179,10 +267,10 @@ class AIImageServer:
                 # 构建响应
                 response = {
                     "request_id": request_id,
-                    "status": "success",
+                    "status": net_result.status,
                     "message": "图像生成成功",
                     "image_url": f"http://{self.local_ip}:{self.port}/api/images/{request_id}",
-                    "image_paths": [image_path],
+                    "image_paths": net_result.file_path,
                     "parameters": request.dict(),
                     "created_at": start_time.isoformat(),
                     "processing_time": processing_time
@@ -207,7 +295,8 @@ class AIImageServer:
             from fastapi.responses import FileResponse
 
             # 查找图像文件
-            image_files = list(self.image_dir.glob(f"{request_id}_*.png"))
+            func = common_functions['get_today_output_directory']
+            image_files = list(Path(func()).glob(f"*_{request_id}_*.png"))
 
             if not image_files:
                 raise HTTPException(status_code=404, detail="图像未找到")
@@ -237,8 +326,10 @@ class AIImageServer:
             """
             获取服务器统计信息
             """
-            image_files = list(self.image_dir.glob("*.png"))
-            total_size = sum(f.stat().st_size for f in self.image_dir.rglob("*") if f.is_file())
+            func = common_functions['get_today_output_directory']
+            output_dir = Path(func())
+            image_files = list(output_dir.glob("*.png"))
+            total_size = sum(f.stat().st_size for f in output_dir.rglob("*") if f.is_file())
 
             return {
                 "total_images": len(image_files),
@@ -249,47 +340,46 @@ class AIImageServer:
             }
 
     async def generate_ai_image(self, prompt, seed, width, height, request_id):
-        """模拟AI图像生成"""
+        """图像生成"""
+
+        if net_params.prompt == prompt and net_params.seed == seed and net_params.img_width == width and net_params.img_height == height:
+            # 获取结果
+            history = get_history(self.prompt_id)[self.prompt_id]
+            return
+
         logger.info(f"开始生成图像: {request_id}")
 
-        self.params.prompt = prompt
-        self.params.seed = seed
-        self.params.img_width = width
-        self.params.img_height = height
+        net_params.prompt = prompt
+        net_params.seed = seed
+        net_params.img_width = width
+        net_params.img_height = height
 
-        # 模拟生成延迟
-        await asyncio.sleep(2)
+        net_result.status = None
+        net_result.file_path = None
 
-        # 创建测试图像
-        from PIL import Image, ImageDraw
-        import random
+        images, prompt_id = await get_images(self.client_id, prompt, seed, width, height)
 
-        image = Image.new('RGB', (width, height), color='white')
-        draw = ImageDraw.Draw(image)
+        if images is not None and isinstance(images, dict):
+            net_result.file_path = []
+            no = 0
+            for node_id in images:
+                for image_data in images[node_id]:
+                    from PIL import Image
+                    import io
+                    image = Image.open(io.BytesIO(image_data))
 
-        # 添加文字
-        try:
-            text = f"Prompt: {prompt[:30]}..."
-            bbox = draw.textbbox((0, 0), text)
-            text_width = bbox[2] - bbox[0]
-            text_height = bbox[3] - bbox[1]
+                    # 保存图像
+                    filename = f'{datetime.now().strftime("%Y%m%d_%H%M%S")}_{seed}_{request_id}_{no:05d}.png'
+                    func = common_functions['get_today_output_directory']
+                    filepath = os.path.join(func(), filename)
 
-            x = (width - text_width) // 2
-            y = (height - text_height) // 2
-
-            draw.text((x, y), text, fill='black')
-        except:
-            pass
-
-        # 保存图像
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"{request_id}_{timestamp}.png"
-        filepath = self.image_dir / filename
-
-        image.save(filepath, "PNG")
-        logger.info(f"图像已保存: {filepath}")
-
-        return str(filepath)
+                    image.save(filepath, "PNG")
+                    logger.info(f"图像已保存: {filepath}")
+                    net_result.file_path.append(filepath)
+                    net_result.status = "success"
+                    no += 1
+        else:
+            net_result.status = "failed"
 
     def run_server(self):
         # 如果端口为0，自动查找可用端口
@@ -385,36 +475,54 @@ class AIImageServer:
 
 
 # 创建服务器实例
-server = AIImageServer(port=8000)
 
-# 使用示例
-if __name__ == "__main__":
-
-    print("=" * 60)
-    print("AI图像生成服务器")
-    print("=" * 60)
-
-    # 启动服务器（非阻塞）
-    if server.start():
-        print(f"✓ 服务器已启动")
-        print(f"本地访问: http://127.0.0.1:8000")
-        print(f"局域网访问: {server.get_server_url()}")
+def main():
+    server = AIImageServer(port=8000)
+    # 检查服务器状态
+    if not server.is_alive():
         print("=" * 60)
-        print("按 Ctrl+C 停止服务器")
+        print("AI图像生成服务器")
+        print("=" * 60)
 
-        try:
-            # 主线程继续执行其他任务
-            while True:
-                # 这里可以添加其他逻辑
-                time.sleep(1000)
+        # 启动服务器（非阻塞）
+        if server.start():
+            print(f"✓ 服务器已启动")
+            print(f"本地访问: http://127.0.0.1:8000")
+            print(f"局域网访问: {server.get_server_url()}")
+            print("=" * 60)
+        else:
+            print("✗ 服务器启动失败")
 
-                # 检查服务器状态
-                if not server.is_alive():
-                    print("服务器已停止")
-                    break
 
-        except KeyboardInterrupt:
-            print("\n正在停止服务器...")
-            server.stop()
-    else:
-        print("✗ 服务器启动失败")
+main()
+# # 使用示例
+# if __name__ == "__main__":
+#
+#     print("=" * 60)
+#     print("AI图像生成服务器")
+#     print("=" * 60)
+#
+#     # 启动服务器（非阻塞）
+#     if server.start():
+#         print(f"✓ 服务器已启动")
+#         print(f"本地访问: http://127.0.0.1:8000")
+#         print(f"局域网访问: {server.get_server_url()}")
+#         print("=" * 60)
+#         print("按 Ctrl+C 停止服务器")
+#
+#         try:
+#             # 主线程继续执行其他任务
+#             while True:
+#                 # 这里可以添加其他逻辑
+#                 time.sleep(1000)
+#
+#                 # 检查服务器状态
+#                 if not server.is_alive():
+#                     print("服务器已停止")
+#                     break
+#
+#         except KeyboardInterrupt:
+#             print("\n正在停止服务器...")
+#             server.stop()
+#     else:
+#         print("✗ 服务器启动失败")

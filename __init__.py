@@ -7,7 +7,10 @@ from comfy_api.latest import ComfyExtension, io
 
 sys.path.append(os.path.dirname(__file__))
 from formatter import StringFormatter
-from net_objects import NetParamNote
+from image_auto_select import ImageAutoSelectNote, ImageTempNote
+from net_objects import NetParamNote, NetResultNote
+from common_nodes import AbsPathNode
+from video_tools import SimpleMergeVideosNode
 
 
 class SnuabarToolsExtension(ComfyExtension):
@@ -16,6 +19,11 @@ class SnuabarToolsExtension(ComfyExtension):
         return [
             StringFormatter,
             NetParamNote,
+            NetResultNote,
+            ImageAutoSelectNote,
+            ImageTempNote,
+            AbsPathNode,
+            SimpleMergeVideosNode,
         ]
 
 
