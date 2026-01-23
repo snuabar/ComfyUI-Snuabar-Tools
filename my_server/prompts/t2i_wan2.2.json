@@ -135,7 +135,7 @@
   "22": {
     "inputs": {
       "add_noise": "enable",
-      "noise_seed": 574214153614985,
+      "noise_seed": 0,
       "steps": 10,
       "cfg": 1,
       "sampler_name": "euler",
@@ -148,12 +148,12 @@
         0
       ],
       "positive": [
-        "91",
+        "28",
         0
       ],
       "negative": [
-        "89",
-        0
+        "28",
+        1
       ],
       "latent_image": [
         "28",
@@ -168,7 +168,7 @@
   "23": {
     "inputs": {
       "add_noise": "disable",
-      "noise_seed": 1028490848903479,
+      "noise_seed": 0,
       "steps": 10,
       "cfg": 1,
       "sampler_name": "euler",
@@ -181,12 +181,12 @@
         0
       ],
       "positive": [
-        "91",
+        "28",
         0
       ],
       "negative": [
-        "89",
-        0
+        "28",
+        1
       ],
       "latent_image": [
         "22",
@@ -225,7 +225,7 @@
   "29": {
     "inputs": {
       "lora_name": "lightx2v_T2V_14B_cfg_step_distill_v2_lora_rank64_bf16.safetensors",
-      "strength_model": 1.0000000000000002,
+      "strength_model": 1,
       "model": [
         "7",
         0
@@ -247,7 +247,7 @@
     },
     "class_type": "CLIPTextEncode",
     "_meta": {
-      "title": "CLIP文本编码"
+      "title": "negative"
     }
   },
   "91": {
@@ -261,7 +261,7 @@
     },
     "class_type": "CLIPTextEncode",
     "_meta": {
-      "title": "CLIP文本编码"
+      "title": "positive"
     }
   },
   "94": {

@@ -51,11 +51,8 @@
   },
   "5": {
     "inputs": {
-      "seed": [
-        "11",
-        0
-      ],
-      "steps": 20,
+      "seed": 0,
+      "steps": 22,
       "cfg": 8,
       "sampler_name": "euler",
       "scheduler": "simple",
@@ -82,47 +79,9 @@
       "title": "K采样器"
     }
   },
-  "6": {
-    "inputs": {
-      "filename_prefix": [
-        "7",
-        0
-      ],
-      "images": [
-        "4",
-        0
-      ]
-    },
-    "class_type": "SaveImage",
-    "_meta": {
-      "title": "保存图像"
-    }
-  },
-  "7": {
-    "inputs": {
-      "string_field": "%date:yyyyMMdd_hhmmss%_{arg1}",
-      "arg1": [
-        "11",
-        0
-      ]
-    },
-    "class_type": "SnuabarStringFormatter",
-    "_meta": {
-      "title": "StringFormatter"
-    }
-  },
-  "11": {
-    "inputs": {
-      "seed": 836518032935505
-    },
-    "class_type": "Seed_",
-    "_meta": {
-      "title": "随机种子"
-    }
-  },
   "12": {
     "inputs": {
-      "text": "",
+      "text": "The colors are bright, overexposed, static, with unclear details, subtitles, style, work, painting, picture, static, overall grayish, the worst quality, low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, malformed limbs, finger fusion, static picture, messy background, three legs, many people in the background, walking backwards, censored, mosaic censoring, bar censor, pixelated, glowing, bloom, blurry, day, out of focus, low detail, bad anatomy, ugly, overexposed, underexposed, distorted face, extra limbs, cartoonish, 3d render artifacts, duplicate people, unnatural lighting, bad composition, missing shadows, low resolution, poorly textured, glitch, noise, grain, static, motionless, still frame, overall grayish, worst quality, low quality, JPEG compression artifacts, subtitles, stylized, artwork, painting, illustration, cluttered background, many people in background, three legs, walking backward, zoom out, zoom in, mouth speaking, moving mouth, talking, speaking, mute speaking, unnatural skin tone, discolored eyelid, red eyelids, red upper eyelids, no red eyeshadow, closed eyes, no wide-open innocent eyes, poorly drawn hands, extra fingers, fused fingers, poorly drawn face, deformed, disfigured, malformed limbs, thighs, fog, mist, voluminous eyelashes, blush,",
       "嵌入提示词": null,
       "clip": [
         "3",
@@ -132,6 +91,18 @@
     "class_type": "CLIPTextEncode",
     "_meta": {
       "title": "negative"
+    }
+  },
+  "13": {
+    "inputs": {
+      "images": [
+        "4",
+        0
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "预览图像"
     }
   }
 }

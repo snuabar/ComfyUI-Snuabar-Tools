@@ -1,4 +1,5 @@
 # ai_image_server_thread.py
+import hashlib
 import json
 import logging
 import os.path
@@ -43,8 +44,12 @@ def get_image(filename, subfolder, folder_type):
         return response.read()
 
 
-def get_history(prompt_id):
-    with urllib.request.urlopen("http://{}/history/{}".format(server_address, prompt_id)) as response:
+def get_history(prompt_id=None):
+    if prompt_id is None:
+        url = "http://{}/history".format(server_address)
+    else:
+        url = "http://{}/history/{}".format(server_address, prompt_id)
+    with urllib.request.urlopen(url) as response:
         return json.loads(response.read())
 
 
@@ -66,8 +71,7 @@ async def wait_finish(client_id, prompt_id):
                 continue
 
 
-async def get_images(client_id, prompt, seed, width, height):
-    prompt_id = str(uuid.uuid4())
+async def get_images(client_id, prompt_id, prompt, seed, width, height):
     # 准备提示词
     prompt_json = prompts.t2i_wan22(prompt, seed, width, height)
 
@@ -78,25 +82,30 @@ async def get_images(client_id, prompt, seed, width, height):
 
         await wait_finish(client_id, prompt_id)
 
-        # 获取结果
-        history = get_history(prompt_id)[prompt_id]
         """提取图片数据"""
-        output_images = {}
-        for node_id in history['outputs']:
-            node_output = history['outputs'][node_id]
-            images_output = []
-            if 'images' in node_output:
-                for image in node_output['images']:
-                    image_data = get_image(
-                        image['filename'],
-                        image['subfolder'],
-                        image['type']
-                    )
-                    images_output.append(image_data)
-            output_images[node_id] = images_output
-            return output_images, prompt_id
-    return None, prompt_id
+        output_images = get_output_images_from_history(prompt_id)
+        return output_images
+    return None
 
+
+def get_output_images_from_history(prompt_id):
+    # 获取结果
+    history = get_history(prompt_id)[prompt_id]
+    """提取图片数据"""
+    output_images = {}
+    for node_id in history['outputs']:
+        node_output = history['outputs'][node_id]
+        images_output = []
+        if 'images' in node_output:
+            for image in node_output['images']:
+                image_data = get_image(
+                    image['filename'],
+                    image['subfolder'],
+                    image['type']
+                )
+                images_output.append(image_data)
+        output_images[node_id] = images_output
+    return output_images
 
 def get_local_ip():
     """获取本机局域网IP"""
@@ -192,8 +201,8 @@ class AIImageServer:
     class ImageRequest(BaseModel):
         prompt: str = Field(..., description="图像描述提示词", min_length=1, max_length=1000)
         seed: Optional[int] = Field(None, description="随机种子")
-        img_width: int = Field(512, description="图像宽度", ge=64, le=2048)
-        img_height: int = Field(512, description="图像高度", ge=64, le=2048)
+        img_width: int = Field(512, description="图像宽度", ge=64, le=4096)
+        img_height: int = Field(512, description="图像高度", ge=64, le=4096)
         num_images: Optional[int] = Field(1, description="生成图像数量", ge=1, le=4)
         style: Optional[str] = Field("realistic", description="图像风格")
         negative_prompt: Optional[str] = Field(None, description="负面提示词")
@@ -245,7 +254,7 @@ class AIImageServer:
             logger.info(f"请求参数: {request.dict()}")
 
             # 验证参数
-            if request.img_width * request.img_height > 4194304:  # 2048x2048
+            if request.img_width * request.img_height > 4096 * 4096:  # 4096x4096
                 raise HTTPException(
                     status_code=400,
                     detail=f"图像尺寸过大: {request.img_width}x{request.img_height}"
@@ -340,24 +349,26 @@ class AIImageServer:
             }
 
     async def generate_ai_image(self, prompt, seed, width, height, request_id):
+        prompt_id = hashlib.sha256(f"{prompt}-{seed}-{width}-{height}".encode()).hexdigest()
         """图像生成"""
+        if prompt_id != self.prompt_id:
 
-        if net_params.prompt == prompt and net_params.seed == seed and net_params.img_width == width and net_params.img_height == height:
+            logger.info(f"开始生成图像: {request_id}")
+
+            net_params.prompt = prompt
+            net_params.seed = seed
+            net_params.img_width = width
+            net_params.img_height = height
+
+            net_result.status = None
+            net_result.file_path = None
+
+            images = await get_images(self.client_id, prompt_id, prompt, seed, width, height)
+            self.prompt_id = prompt_id
+        else:
             # 获取结果
-            history = get_history(self.prompt_id)[self.prompt_id]
-            return
-
-        logger.info(f"开始生成图像: {request_id}")
-
-        net_params.prompt = prompt
-        net_params.seed = seed
-        net_params.img_width = width
-        net_params.img_height = height
-
-        net_result.status = None
-        net_result.file_path = None
-
-        images, prompt_id = await get_images(self.client_id, prompt, seed, width, height)
+            """提取图片数据"""
+            images = get_output_images_from_history(self.prompt_id)
 
         if images is not None and isinstance(images, dict):
             net_result.file_path = []
