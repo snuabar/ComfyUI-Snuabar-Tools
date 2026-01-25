@@ -110,16 +110,66 @@ def get_output_images_from_history(prompt_id):
     return output_images
 
 
-def get_local_ip():
-    """获取本机局域网IP"""
+def get_local_ips():
+    """获取本机所有局域网IP地址（IPv4和IPv6）"""
+    local_ips = {
+        "ipv4": [],
+        "ipv6": []
+    }
+
+    # 尝试获取所有网络接口的地址信息
     try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(("8.8.8.8", 80))
-        ip = s.getsockname()[0]
-        s.close()
-        return ip
-    except:
-        return "127.0.0.1"
+        # 获取主机名
+        hostname = socket.gethostname()
+
+        # 获取所有IP地址信息
+        addrinfo_list = socket.getaddrinfo(hostname, None)
+
+        for addr_info in addrinfo_list:
+            family = addr_info[0]
+            address = addr_info[4][0]
+
+            # 过滤回环地址和链路本地地址
+            if address.startswith("127.") or address == "::1":
+                continue
+
+            # 根据地址族分类
+            if family == socket.AF_INET:  # IPv4
+                if address not in local_ips["ipv4"]:
+                    local_ips["ipv4"].append(address)
+            elif family == socket.AF_INET6:  # IPv6
+                # 过滤IPv6链路本地地址（fe80::/10）
+                if address.startswith("fe80:"):
+                    continue
+                if address not in local_ips["ipv6"]:
+                    local_ips["ipv6"].append(address)
+
+    except Exception as e:
+        print(f"获取IP地址时出错: {e}")
+        local_ips["ipv4"].append("127.0.0.1")
+        local_ips["ipv6"].append("::1")
+
+    return local_ips
+
+
+# 如果您还想保留原有函数签名，可以这样包装
+def get_local_ip():
+    """获取本机主要局域网IP（优先返回IPv4）"""
+    ips = get_local_ips()
+    import sys
+    if '--listen' in sys.argv:
+        index = sys.argv.index('--listen')
+        if index != -1:
+            v6_addr = sys.argv[index + 1]
+            if ips["ipv6"] and v6_addr in ips["ipv6"]:
+                return v6_addr, True
+
+    if ips["ipv4"]:
+        return ips["ipv4"][0], False  # 返回第一个IPv4地址
+    elif ips["ipv6"]:
+        return ips["ipv6"][0], True  # 如果没有IPv4，返回IPv6
+    else:
+        return "127.0.0.1", False
 
 
 class NetParams:
@@ -155,7 +205,9 @@ class AIImageServer:
             host: 监听地址，默认0.0.0.0（所有接口）
             port: 监听端口，默认0（自动搜索）
         """
-        self.local_ip = get_local_ip()
+        ip, is_v6 = get_local_ip()
+        self.local_ip = ip
+        self.is_v6 = is_v6
         self.host = host or self.local_ip
         self.port = port
         self.actual_port = port
@@ -287,12 +339,13 @@ class AIImageServer:
                 end_time = datetime.now()
                 processing_time = (end_time - start_time).total_seconds()
 
+                host = f"[{self.local_ip}]:{self.port}" if self.is_v6 else f"{self.local_ip}:{self.port}"
                 # 构建响应
                 response = {
                     "request_id": request_id,
                     "status": net_result.status,
                     "message": "图像生成成功",
-                    "image_url": f"http://{self.local_ip}:{self.port}/api/images/{request_id}",
+                    "image_url": f"http://{host}/api/images/{request_id}",
                     "image_paths": net_result.file_path,
                     "parameters": request.dict(),
                     "created_at": start_time.isoformat(),
@@ -359,7 +412,7 @@ class AIImageServer:
                 "storage_used_mb": total_size / (1024 * 1024),
                 "server_status": "running" if self.is_running else "stopped",
                 "uptime": self.get_uptime(),
-                "server_address": f"http://{self.local_ip}:{self.port}"
+                "server_address": f"http://[{self.local_ip}]:{self.port}" if self.is_v6 else f"http://{self.local_ip}:{self.port}"
             }
 
     async def generate_ai_image(self, workflow, prompt, seed, width, height, request_id):
@@ -465,7 +518,10 @@ class AIImageServer:
         import time
         for i in range(10):  # 最多等待10秒
             if self.is_running:
-                logger.info(f"服务器已启动在 http://{self.local_ip}:{self.actual_port}")
+                if self.is_v6:
+                    logger.info(f"服务器已启动在 http://[{self.local_ip}]:{self.actual_port}")
+                else:
+                    logger.info(f"服务器已启动在 http://{self.local_ip}:{self.actual_port}")
                 logger.info(f"本地访问: http://127.0.0.1:{self.actual_port}")
                 return True
             time.sleep(1)
@@ -497,6 +553,8 @@ class AIImageServer:
 
     def get_server_url(self):
         """获取服务器URL"""
+        if self.is_v6:
+            return f"http://[{self.local_ip}]:{self.actual_port}"
         return f"http://{self.local_ip}:{self.actual_port}"
 
 
@@ -516,6 +574,10 @@ def main():
             print(f"本地访问: http://127.0.0.1:8000")
             print(f"局域网访问: {server.get_server_url()}")
             print("=" * 60)
+
+            if server.is_v6:
+                global server_address
+                server_address = f"[{server.local_ip}]:8188"
         else:
             print("✗ 服务器启动失败")
 
