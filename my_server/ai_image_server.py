@@ -71,20 +71,22 @@ async def wait_finish(client_id, prompt_id):
                 continue
 
 
-async def get_images(client_id, prompt_id, prompt, seed, width, height):
+async def get_images(workflow, client_id, prompt_id, prompt, seed, width, height):
     # 准备提示词
-    prompt_json = prompts.t2i_wan22(prompt, seed, width, height)
+    workflow_prompt_func = prompts.workflow_func_map[workflow]
+    if workflow_prompt_func is not None:
+        prompt_json = workflow_prompt_func(prompt, seed, width, height)
 
-    # 通过 HTTP 提交任务
-    response = queue_prompt(prompt_json, client_id, prompt_id)
-    if response and response.code == 200:
-        response.read()
+        # 通过 HTTP 提交任务
+        response = queue_prompt(prompt_json, client_id, prompt_id)
+        if response and response.code == 200:
+            response.read()
 
-        await wait_finish(client_id, prompt_id)
+            await wait_finish(client_id, prompt_id)
 
-        """提取图片数据"""
-        output_images = get_output_images_from_history(prompt_id)
-        return output_images
+            """提取图片数据"""
+            output_images = get_output_images_from_history(prompt_id)
+            return output_images
     return None
 
 
@@ -106,6 +108,7 @@ def get_output_images_from_history(prompt_id):
                 images_output.append(image_data)
         output_images[node_id] = images_output
     return output_images
+
 
 def get_local_ip():
     """获取本机局域网IP"""
@@ -199,6 +202,7 @@ class AIImageServer:
 
     # 请求模型
     class ImageRequest(BaseModel):
+        workflow: str = Field(..., description="工作流", min_length=1, max_length=1000)
         prompt: str = Field(..., description="图像描述提示词", min_length=1, max_length=1000)
         seed: Optional[int] = Field(None, description="随机种子")
         img_width: int = Field(512, description="图像宽度", ge=64, le=4096)
@@ -228,6 +232,7 @@ class AIImageServer:
                 "message": "AI图像生成服务器",
                 "status": "运行中",
                 "endpoints": {
+                    "GET /api/workflows": "获取工作流",
                     "POST /api/generate": "生成AI图像",
                     "GET /api/images/{request_id}": "获取生成的图像",
                     "GET /api/status/{request_id}": "检查生成状态",
@@ -239,6 +244,13 @@ class AIImageServer:
                     "local_ip": self.local_ip
                 },
                 "timestamp": datetime.now().isoformat()
+            }
+
+        @self.app.get("/api/workflows")
+        async def workflow():
+            prompts.load_workflows()
+            return {
+                "workflows": prompts.workflow_list
             }
 
         @self.app.post("/api/generate", response_model=self.ImageResponse)
@@ -262,13 +274,15 @@ class AIImageServer:
 
             # 模拟AI图像生成
             try:
-                await self.generate_ai_image(
+                prompt_id = await self.generate_ai_image(
+                    workflow=request.workflow,
                     prompt=request.prompt,
                     seed=request.seed or 0,
                     width=request.img_width,
                     height=request.img_height,
                     request_id=request_id
                 )
+                self.prompt_id = prompt_id
 
                 end_time = datetime.now()
                 processing_time = (end_time - start_time).total_seconds()
@@ -348,8 +362,8 @@ class AIImageServer:
                 "server_address": f"http://{self.local_ip}:{self.port}"
             }
 
-    async def generate_ai_image(self, prompt, seed, width, height, request_id):
-        prompt_id = hashlib.sha256(f"{prompt}-{seed}-{width}-{height}".encode()).hexdigest()
+    async def generate_ai_image(self, workflow, prompt, seed, width, height, request_id):
+        prompt_id = hashlib.sha256(f"{workflow}-{prompt}-{seed}-{width}-{height}".encode()).hexdigest()
         """图像生成"""
         if prompt_id != self.prompt_id:
 
@@ -363,8 +377,7 @@ class AIImageServer:
             net_result.status = None
             net_result.file_path = None
 
-            images = await get_images(self.client_id, prompt_id, prompt, seed, width, height)
-            self.prompt_id = prompt_id
+            images = await get_images(workflow, self.client_id, prompt_id, prompt, seed, width, height)
         else:
             # 获取结果
             """提取图片数据"""
@@ -391,6 +404,8 @@ class AIImageServer:
                     no += 1
         else:
             net_result.status = "failed"
+
+        return prompt_id
 
     def run_server(self):
         # 如果端口为0，自动查找可用端口
