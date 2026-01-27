@@ -2,64 +2,157 @@ import json
 import os
 
 __prompt_json_path = os.path.join(os.path.dirname(__file__), 'workflows')
+__upscale_prompt_suffix = '.upscale'
 
 
-def __get_prompt_file(filename):
-    return os.path.join(__prompt_json_path, filename)
+def __get_prompt_file(filename, upscale=False):
+    ori_filename = filename
+    if upscale:
+        filename = filename + __upscale_prompt_suffix
+    prompt_path = os.path.join(__prompt_json_path, filename + ".json")
+    if os.path.exists(prompt_path):
+        return prompt_path
+    return __get_prompt_file(ori_filename, False)
 
 
-def t2i(positive_prompt='', seed=0, width=0, height=0):
+def __precheck(prompt_x, class_type, key):
+    return ('class_type' in prompt_x and
+            class_type in prompt_x['class_type'] and
+            'inputs' in prompt_x and
+            key in prompt_x['inputs'])
+
+
+def __get_condition_x(prompt, condition):
+    for x in prompt:
+        if __precheck(prompt[x], 'Sampler', condition):
+            x0 = prompt[x]['inputs'][condition][0]
+            while True:
+                if __precheck(prompt[x0], 'TextEncode', 'text'):
+                    return x0
+                _sub_class_type = prompt[x0]['class_type']
+                if __precheck(prompt[x0], _sub_class_type, condition):
+                    return prompt[x0]['inputs'][condition][0]
+                x0 = prompt[x0]['inputs'][condition][0]
+    return None
+
+
+def __set_prompt_input(prompt, class_type, key, value, x=None):
+    if x is not None and x in prompt:
+        if __precheck(prompt[x], class_type, key):
+            prompt[x]['inputs'][key] = value
+        return
+
+    for x in prompt:
+        if __precheck(prompt[x], class_type, key):
+            prompt[x]['inputs'][key] = value
+
+
+def __get_prompt_input(prompt, class_type, key, x=None):
+    if x is not None and x in prompt:
+        if __precheck(prompt[x], class_type, key):
+            return prompt[x]['inputs'][key]
+
+    for x in prompt:
+        if __precheck(prompt[x], class_type, key):
+            return prompt[x]['inputs'][key]
+
+    return None
+
+
+def __get_upscale_params(width, height, upscale_factor):
+    default_mask_blur = 8
+    default_tile_padding = 32
+    mask_blur = default_mask_blur * upscale_factor
+    tile_padding = default_tile_padding * upscale_factor
+    tile_width = (width * upscale_factor) // 2
+    tile_height = (height * upscale_factor) // 2
+    return mask_blur, tile_padding, tile_width, tile_height
+
+
+def t2i(model=None, positive_prompt='', seed=0, width=0, height=0, step=0, cfg=0.0, upscale_factor=0.0):
     try:
-        json_path = __get_prompt_file('t2i.json')
+        json_path = __get_prompt_file('t2i', upscale_factor > 1.0)
         with open(json_path, 'r', encoding='utf-8') as f:
             prompt = json.loads(f.read())
+        if model is not None and model != "":
+            __set_prompt_input(prompt, 'CheckpointLoaderSimple', 'ckpt_name', model)
         if positive_prompt is not None and positive_prompt != "":
-            prompt['1']['inputs']['text'] = positive_prompt
+            _x = __get_condition_x(prompt, 'positive')
+            __set_prompt_input(prompt, 'CLIPTextEncode', 'text', positive_prompt, x=_x)
         if width > 5:
-            prompt['2']['inputs']['width'] = width
+            __set_prompt_input(prompt, 'EmptyLatentImage', 'width', width)
         if height > 5:
-            prompt['2']['inputs']['height'] = height
+            __set_prompt_input(prompt, 'EmptyLatentImage', 'height', height)
         if seed != 0:
-            prompt['5']['inputs']['seed'] = seed
-
+            __set_prompt_input(prompt, 'KSampler', 'seed', seed)
+            __set_prompt_input(prompt, 'UltimateSDUpscale', 'seed', seed)
+        if step != 0:
+            __set_prompt_input(prompt, 'KSampler', 'steps', step)
+        if cfg != 0.0:
+            __set_prompt_input(prompt, 'KSampler', 'cfg', cfg)
+            __set_prompt_input(prompt, 'UltimateSDUpscale', 'cfg', cfg)
+        if upscale_factor > 1.0:
+            __set_prompt_input(prompt, 'UltimateSDUpscale', 'upscale_by', upscale_factor)
+            s = __get_prompt_input(prompt, 'KSampler', 'seed')
+            __set_prompt_input(prompt, 'UltimateSDUpscale', 'seed', s)
+            w = __get_prompt_input(prompt, 'EmptyLatentImage', 'width')
+            h = __get_prompt_input(prompt, 'EmptyLatentImage', 'height')
+            mask_blur, tile_padding, tile_width, tile_height = __get_upscale_params(w, h, upscale_factor)
+            __set_prompt_input(prompt, 'UltimateSDUpscale', 'mask_blur', mask_blur)
+            __set_prompt_input(prompt, 'UltimateSDUpscale', 'tile_padding', tile_padding)
+            __set_prompt_input(prompt, 'UltimateSDUpscale', 'tile_width', tile_width)
+            __set_prompt_input(prompt, 'UltimateSDUpscale', 'tile_height', tile_height)
         return prompt
     except Exception as e:
         print(f"t2i. e: {e}")
         return None
 
 
-def t2i_wan22(positive_prompt='', seed=0, width=0, height=0):
+def t2i_wan22(model=None, positive_prompt='', seed=0, width=0, height=0, step=0, cfg=0.0, upscale_factor=0.0):
     try:
-        json_path = __get_prompt_file('t2i_wan22.json')
+        json_path = __get_prompt_file('t2i_wan22', upscale_factor > 1.0)
         with open(json_path, 'r', encoding='utf-8') as f:
             prompt = json.loads(f.read())
         if positive_prompt is not None and positive_prompt != "":
-            prompt['91']['inputs']['text'] = positive_prompt
+            _x = __get_condition_x(prompt, 'positive')
+            __set_prompt_input(prompt, 'CLIPTextEncode', 'text', positive_prompt, x=_x)
         if width > 5:
-            prompt['28']['inputs']['width'] = width
+            __set_prompt_input(prompt, 'WanImageToVideo', 'width', width)
         if height > 5:
-            prompt['28']['inputs']['height'] = height
+            __set_prompt_input(prompt, 'WanImageToVideo', 'height', height)
         if seed != 0:
-            prompt['22']['inputs']['noise_seed'] = seed
-            prompt['23']['inputs']['noise_seed'] = seed
-
+            __set_prompt_input(prompt, 'KSamplerAdvanced', 'noise_seed', seed)
+        if step != 0:
+            __set_prompt_input(prompt, 'KSamplerAdvanced', 'steps', step)
+        if cfg != 0.0:
+            __set_prompt_input(prompt, 'KSamplerAdvanced', 'cfg', cfg)
+        if upscale_factor > 1.0:
+            __set_prompt_input(prompt, 'UltimateSDUpscale', 'upscale_by', upscale_factor)
+            s = __get_prompt_input(prompt, 'KSamplerAdvanced', 'noise_seed')
+            __set_prompt_input(prompt, 'UltimateSDUpscale', 'seed', s)
+            w = __get_prompt_input(prompt, 'WanImageToVideo', 'width')
+            h = __get_prompt_input(prompt, 'WanImageToVideo', 'height')
+            mask_blur, tile_padding, tile_width, tile_height = __get_upscale_params(w, h, upscale_factor)
+            __set_prompt_input(prompt, 'UltimateSDUpscale', 'mask_blur', mask_blur)
+            __set_prompt_input(prompt, 'UltimateSDUpscale', 'tile_padding', tile_padding)
+            __set_prompt_input(prompt, 'UltimateSDUpscale', 'tile_width', tile_width)
+            __set_prompt_input(prompt, 'UltimateSDUpscale', 'tile_height', tile_height)
         return prompt
     except Exception as e:
         print(f"t2i. e: {e}")
         return None
 
 
-workflow_list = []
-workflow_func_map = {}
+workflow_list: dict = {}
+workflow_func_map: dict = {}
 
 
 def load_workflows():
-    from pathlib import Path
-
+    global workflow_list
     workflow_list.clear()
+    with open(__get_prompt_file('model_map'), 'r', encoding='utf-8') as f:
+        workflow_list = json.loads(f.read())
+
     workflow_func_map.clear()
-    __workflow_file_list = list(Path(__prompt_json_path).glob(f"*.json"))
-    for workflow_f in __workflow_file_list:
-        stem = workflow_f.stem
-        workflow_list.append(stem)
-        workflow_func_map[stem] = globals()[stem]
+    for key in workflow_list.keys():
+        workflow_func_map[key] = globals()[key]
