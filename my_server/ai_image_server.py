@@ -19,6 +19,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+import folder_paths
 import prompts
 
 common_functions = {}
@@ -71,11 +72,13 @@ async def wait_finish(client_id, prompt_id):
                 continue
 
 
-async def get_images(workflow, client_id, prompt_id, prompt, seed, width, height):
+async def get_images(client_id, prompt_id, workflow, model, prompt, seed, width, height, step, cfg, upscale_factor):
     # 准备提示词
+    if len(prompts.workflow_func_map) == 0:
+        prompts.load_workflows()
     workflow_prompt_func = prompts.workflow_func_map[workflow]
     if workflow_prompt_func is not None:
-        prompt_json = workflow_prompt_func(prompt, seed, width, height)
+        prompt_json = workflow_prompt_func(model, prompt, seed, width, height, step, cfg, upscale_factor)
 
         # 通过 HTTP 提交任务
         response = queue_prompt(prompt_json, client_id, prompt_id)
@@ -152,26 +155,6 @@ def get_local_ips():
     return local_ips
 
 
-# 如果您还想保留原有函数签名，可以这样包装
-def get_local_ip():
-    """获取本机主要局域网IP（优先返回IPv4）"""
-    ips = get_local_ips()
-    import sys
-    if '--listen' in sys.argv:
-        index = sys.argv.index('--listen')
-        if index != -1:
-            v6_addr = sys.argv[index + 1]
-            if ips["ipv6"] and v6_addr in ips["ipv6"]:
-                return v6_addr, True
-
-    if ips["ipv4"]:
-        return ips["ipv4"][0], False  # 返回第一个IPv4地址
-    elif ips["ipv6"]:
-        return ips["ipv6"][0], True  # 如果没有IPv4，返回IPv6
-    else:
-        return "127.0.0.1", False
-
-
 class NetParams:
     def __init__(self):
         self.prompt = ''
@@ -197,7 +180,7 @@ net_result = NetResult()
 
 
 class AIImageServer:
-    def __init__(self, host=None, port=0):
+    def __init__(self, host=None, port=0, local_ip: str = None, is_v6: bool=False):
         """
         初始化AI图像生成服务器
 
@@ -205,8 +188,7 @@ class AIImageServer:
             host: 监听地址，默认0.0.0.0（所有接口）
             port: 监听端口，默认0（自动搜索）
         """
-        ip, is_v6 = get_local_ip()
-        self.local_ip = ip
+        self.local_ip = local_ip
         self.is_v6 = is_v6
         self.host = host or self.local_ip
         self.port = port
@@ -255,6 +237,7 @@ class AIImageServer:
     # 请求模型
     class ImageRequest(BaseModel):
         workflow: str = Field(..., description="工作流", min_length=1, max_length=1000)
+        model: str = Field(None, description="模型", min_length=1, max_length=1000)
         prompt: str = Field(..., description="图像描述提示词", min_length=1, max_length=1000)
         seed: Optional[int] = Field(None, description="随机种子")
         img_width: int = Field(512, description="图像宽度", ge=64, le=4096)
@@ -262,6 +245,9 @@ class AIImageServer:
         num_images: Optional[int] = Field(1, description="生成图像数量", ge=1, le=4)
         style: Optional[str] = Field("realistic", description="图像风格")
         negative_prompt: Optional[str] = Field(None, description="负面提示词")
+        upscale_factor: Optional[float] = Field(None, description="放大系数")
+        step: Optional[int] = Field(None, description="步数")
+        cfg: Optional[float] = Field(None, description="相关性CFG")
 
     # 响应模型
     class ImageResponse(BaseModel):
@@ -305,36 +291,82 @@ class AIImageServer:
                 "workflows": prompts.workflow_list
             }
 
+        @self.app.get("/api/models")
+        async def model_type_list():
+            model_types = list(folder_paths.folder_names_and_paths.keys())
+            return {
+                "model_types": model_types
+            }
+
+        @self.app.get("/api/models/{model_type}")
+        async def model_list(model_type: str):
+            files = folder_paths.get_filename_list(model_type)
+            return {
+                "models": files
+            }
+
         @self.app.post("/api/generate", response_model=self.ImageResponse)
         async def generate_image(request: AIImageServer.ImageRequest):
             """
             接收Android端的绘图请求
             """
-            # 生成请求ID
-            request_id = str(uuid.uuid4())[:8]
             start_time = datetime.now()
+            prompt_id = hashlib.sha256(f"{request.workflow}-"
+                                       f"{request.model}-"
+                                       f"{request.prompt}-"
+                                       f"{request.seed}-"
+                                       f"{request.img_width}-"
+                                       f"{request.img_height}-"
+                                       f"{request.upscale_factor}-"
+                                       f"{request.step}-"
+                                       f"{request.cfg}-"
+                                       .encode()).hexdigest()
 
-            logger.info(f"收到生成请求: {request_id}")
-            logger.info(f"请求参数: {request.dict()}")
+            self.prompt_id = prompt_id
+            # 生成请求ID
+            request_id = prompt_id[:8]
 
-            # 验证参数
-            if request.img_width * request.img_height > 4096 * 4096:  # 4096x4096
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"图像尺寸过大: {request.img_width}x{request.img_height}"
-                )
-
-            # 模拟AI图像生成
             try:
-                prompt_id = await self.generate_ai_image(
-                    workflow=request.workflow,
-                    prompt=request.prompt,
-                    seed=request.seed or 0,
-                    width=request.img_width,
-                    height=request.img_height,
-                    request_id=request_id
-                )
-                self.prompt_id = prompt_id
+                # 查找图像文件
+                image_files = find_images(request_id)
+                if image_files and len(image_files) > 0:
+                    net_result.file_path = [str(p) for p in image_files]
+                    net_result.status = "success"
+                else:
+                    logger.info(f"收到生成请求: {request_id}")
+                    logger.info(f"请求参数: {request.dict()}")
+
+                    net_params.prompt = request.prompt
+                    net_params.seed = request.seed
+                    net_params.img_width = request.img_width
+                    net_params.img_height = request.img_height
+
+                    net_result.status = None
+                    net_result.file_path = None
+
+                    # 验证参数
+                    if request.img_width * request.img_height > 4096 * 4096:  # 4096x4096
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"图像尺寸过大: {request.img_width}x{request.img_height}"
+                        )
+                    # 图像生成
+                    status, file_path = await self.generate_ai_image(
+                        prompt_id=prompt_id,
+                        request_id=request_id,
+                        workflow=request.workflow,
+                        model=request.model,
+                        prompt=request.prompt,
+                        seed=request.seed or 0,
+                        width=request.img_width,
+                        height=request.img_height,
+                        step=request.step,
+                        cfg=request.cfg,
+                        upscale_factor=request.upscale_factor,
+                    )
+
+                    net_result.status = status
+                    net_result.file_path = file_path
 
                 end_time = datetime.now()
                 processing_time = (end_time - start_time).total_seconds()
@@ -347,7 +379,7 @@ class AIImageServer:
                     "message": "图像生成成功",
                     "image_url": f"http://{host}/api/images/{request_id}",
                     "image_paths": net_result.file_path,
-                    "parameters": request.dict(),
+                    "parameters": request.model_dump(),
                     "created_at": start_time.isoformat(),
                     "processing_time": processing_time
                 }
@@ -363,6 +395,12 @@ class AIImageServer:
                     detail=f"图像生成失败: {str(e)}"
                 )
 
+        def find_images(request_id: str):
+            # 查找图像文件
+            func = common_functions['get_today_output_directory']
+            image_files = list(Path(func()).glob(f"*_{request_id}_*.png"))
+            return image_files
+
         @self.app.get("/api/images/{request_id}")
         async def get_image(request_id: str):
             """
@@ -371,8 +409,7 @@ class AIImageServer:
             from fastapi.responses import FileResponse
 
             # 查找图像文件
-            func = common_functions['get_today_output_directory']
-            image_files = list(Path(func()).glob(f"*_{request_id}_*.png"))
+            image_files = find_images(request_id)
 
             if not image_files:
                 raise HTTPException(status_code=404, detail="图像未找到")
@@ -415,29 +452,14 @@ class AIImageServer:
                 "server_address": f"http://[{self.local_ip}]:{self.port}" if self.is_v6 else f"http://{self.local_ip}:{self.port}"
             }
 
-    async def generate_ai_image(self, workflow, prompt, seed, width, height, request_id):
-        prompt_id = hashlib.sha256(f"{workflow}-{prompt}-{seed}-{width}-{height}".encode()).hexdigest()
+    async def generate_ai_image(self, prompt_id, request_id, workflow, model, prompt, seed, width, height, step, cfg, upscale_factor):
         """图像生成"""
-        if prompt_id != self.prompt_id:
+        logger.info(f"开始生成图像: {request_id}")
 
-            logger.info(f"开始生成图像: {request_id}")
-
-            net_params.prompt = prompt
-            net_params.seed = seed
-            net_params.img_width = width
-            net_params.img_height = height
-
-            net_result.status = None
-            net_result.file_path = None
-
-            images = await get_images(workflow, self.client_id, prompt_id, prompt, seed, width, height)
-        else:
-            # 获取结果
-            """提取图片数据"""
-            images = get_output_images_from_history(self.prompt_id)
-
+        status = "failed"
+        file_path = []
+        images = await get_images(self.client_id, prompt_id, workflow, model, prompt, seed, width, height, step, cfg, upscale_factor)
         if images is not None and isinstance(images, dict):
-            net_result.file_path = []
             no = 0
             for node_id in images:
                 for image_data in images[node_id]:
@@ -452,13 +474,11 @@ class AIImageServer:
 
                     image.save(filepath, "PNG")
                     logger.info(f"图像已保存: {filepath}")
-                    net_result.file_path.append(filepath)
-                    net_result.status = "success"
+                    file_path.append(filepath)
+                    status = "success"
                     no += 1
-        else:
-            net_result.status = "failed"
 
-        return prompt_id
+        return status, file_path
 
     def run_server(self):
         # 如果端口为0，自动查找可用端口
@@ -522,7 +542,6 @@ class AIImageServer:
                     logger.info(f"服务器已启动在 http://[{self.local_ip}]:{self.actual_port}")
                 else:
                     logger.info(f"服务器已启动在 http://{self.local_ip}:{self.actual_port}")
-                logger.info(f"本地访问: http://127.0.0.1:{self.actual_port}")
                 return True
             time.sleep(1)
 
@@ -561,7 +580,25 @@ class AIImageServer:
 # 创建服务器实例
 
 def main():
-    server = AIImageServer(port=8000)
+    """获取本机主要局域网IP（优先返回IPv4）"""
+
+    ip = "127.0.0.1"
+    is_v6 = False
+    ips = get_local_ips()
+    import sys
+    if '--listen' in sys.argv:
+        idx = sys.argv.index('--listen')
+        if idx != -1:
+            ip_addr = sys.argv[idx + 1]
+            if ips["ipv4"] and ip_addr in ips["ipv4"]:
+                ip = ip_addr
+            elif ips["ipv6"] and ip_addr in ips["ipv6"]:
+                ip = ip_addr
+                is_v6 = True
+            else:
+                logger.error(f"找不到监听地址：{ip_addr}, 默认使用本地地址：127.0.0.1")
+
+    server = AIImageServer(port=8000, local_ip=ip, is_v6=is_v6)
     # 检查服务器状态
     if not server.is_alive():
         print("=" * 60)
@@ -571,13 +608,14 @@ def main():
         # 启动服务器（非阻塞）
         if server.start():
             print(f"✓ 服务器已启动")
-            print(f"本地访问: http://127.0.0.1:8000")
-            print(f"局域网访问: {server.get_server_url()}")
+            print(f"访问地址: {server.get_server_url()}")
             print("=" * 60)
 
-            if server.is_v6:
-                global server_address
+            global server_address
+            if is_v6:
                 server_address = f"[{server.local_ip}]:8188"
+            else:
+                server_address = f"{server.local_ip}:8188"
         else:
             print("✗ 服务器启动失败")
 
