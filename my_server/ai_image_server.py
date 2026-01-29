@@ -1,5 +1,6 @@
 # ai_image_server_thread.py
 import hashlib
+import http.client
 import json
 import logging
 import os.path
@@ -9,18 +10,17 @@ import urllib
 import urllib.parse
 import urllib.request
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, List
 
 import uvicorn
-import websockets
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 import folder_paths
-import prompts
+import workflows as wf
 
 common_functions = {}
 
@@ -29,6 +29,26 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 server_address = "127.0.0.1:8188"
+
+
+def _get_datetime_now_utc():
+    return int(datetime.now(timezone.utc).timestamp() * 1000)
+
+
+def generate_prompt_id(*args):
+    inputs = []
+    for value in args:
+        inputs.append(f'-{value}')
+    inputs.append('-')
+
+    inputs_str = "".join(inputs)
+    prompt_id = hashlib.sha256(inputs_str.encode()).hexdigest()
+
+    return prompt_id
+
+
+def _get_request_id(prompt_id):
+    return prompt_id[:8]
 
 
 def queue_prompt(prompt, client_id, prompt_id):
@@ -54,48 +74,10 @@ def get_history(prompt_id=None):
         return json.loads(response.read())
 
 
-async def wait_finish(client_id, prompt_id):
-    uri = f"ws://{server_address}/ws?clientId={client_id}"
-    async with websockets.connect(uri) as websocket:
-        # 监听 WebSocket 消息
-        while True:
-            message = await websocket.recv()
-
-            if isinstance(message, str):
-                data = json.loads(message)
-                if data['type'] == 'executing':
-                    if (data['data']['node'] is None and
-                            data['data']['prompt_id'] == prompt_id):
-                        break  # 执行完成
-            else:
-                # 二进制预览数据
-                continue
-
-
-async def get_images(client_id, prompt_id, workflow, model, prompt, seed, width, height, step, cfg, upscale_factor):
-    # 准备提示词
-    if len(prompts.workflow_func_map) == 0:
-        prompts.load_workflows()
-    workflow_prompt_func = prompts.workflow_func_map[workflow]
-    if workflow_prompt_func is not None:
-        prompt_json = workflow_prompt_func(model, prompt, seed, width, height, step, cfg, upscale_factor)
-
-        # 通过 HTTP 提交任务
-        response = queue_prompt(prompt_json, client_id, prompt_id)
-        if response and response.code == 200:
-            response.read()
-
-            await wait_finish(client_id, prompt_id)
-
-            """提取图片数据"""
-            output_images = get_output_images_from_history(prompt_id)
-            return output_images
-    return None
-
-
-def get_output_images_from_history(prompt_id):
+async def get_output_images_from_history(prompt_id, history=None):
     # 获取结果
-    history = get_history(prompt_id)[prompt_id]
+    if history is None:
+        history = get_history(prompt_id)[prompt_id]
     """提取图片数据"""
     output_images = {}
     for node_id in history['outputs']:
@@ -110,7 +92,7 @@ def get_output_images_from_history(prompt_id):
                 )
                 images_output.append(image_data)
         output_images[node_id] = images_output
-    return output_images
+    return output_images, history
 
 
 def get_local_ips():
@@ -180,7 +162,7 @@ net_result = NetResult()
 
 
 class AIImageServer:
-    def __init__(self, host=None, port=0, local_ip: str = None, is_v6: bool=False):
+    def __init__(self, host=None, port=0, local_ip: str = None, is_v6: bool = False):
         """
         初始化AI图像生成服务器
 
@@ -198,6 +180,7 @@ class AIImageServer:
         self.is_running = False
         self.client_id = str(uuid.uuid4())
         self.prompt_id = None
+        self.running_request: dict[str, AIImageServer.ImageRequest] = {}
 
         # 创建FastAPI应用
         self.app = FastAPI(
@@ -260,6 +243,9 @@ class AIImageServer:
         created_at: str
         processing_time: Optional[float] = None
 
+    class InterruptRequest(BaseModel):
+        prompt_id: str = Field(None, description='ID')
+
     def setup_routes(self):
         """设置API路由"""
 
@@ -285,10 +271,10 @@ class AIImageServer:
             }
 
         @self.app.get("/api/workflows")
-        async def workflow():
-            prompts.load_workflows()
+        async def workflows():
+            wf.load_workflows()
             return {
-                "workflows": prompts.workflow_list
+                "workflows": wf.workflow_list
             }
 
         @self.app.get("/api/models")
@@ -305,95 +291,105 @@ class AIImageServer:
                 "models": files
             }
 
-        @self.app.post("/api/generate", response_model=self.ImageResponse)
-        async def generate_image(request: AIImageServer.ImageRequest):
-            """
-            接收Android端的绘图请求
-            """
-            start_time = datetime.now()
-            prompt_id = hashlib.sha256(f"{request.workflow}-"
-                                       f"{request.model}-"
-                                       f"{request.prompt}-"
-                                       f"{request.seed}-"
-                                       f"{request.img_width}-"
-                                       f"{request.img_height}-"
-                                       f"{request.upscale_factor}-"
-                                       f"{request.step}-"
-                                       f"{request.cfg}-"
-                                       .encode()).hexdigest()
-
-            self.prompt_id = prompt_id
-            # 生成请求ID
-            request_id = prompt_id[:8]
-
-            try:
-                # 查找图像文件
-                image_files = find_images(request_id)
-                if image_files and len(image_files) > 0:
-                    net_result.file_path = [str(p) for p in image_files]
-                    net_result.status = "success"
-                else:
-                    logger.info(f"收到生成请求: {request_id}")
-                    logger.info(f"请求参数: {request.dict()}")
-
-                    net_params.prompt = request.prompt
-                    net_params.seed = request.seed
-                    net_params.img_width = request.img_width
-                    net_params.img_height = request.img_height
-
-                    net_result.status = None
-                    net_result.file_path = None
-
-                    # 验证参数
-                    if request.img_width * request.img_height > 4096 * 4096:  # 4096x4096
-                        raise HTTPException(
-                            status_code=400,
-                            detail=f"图像尺寸过大: {request.img_width}x{request.img_height}"
-                        )
-                    # 图像生成
-                    status, file_path = await self.generate_ai_image(
-                        prompt_id=prompt_id,
-                        request_id=request_id,
-                        workflow=request.workflow,
-                        model=request.model,
-                        prompt=request.prompt,
-                        seed=request.seed or 0,
-                        width=request.img_width,
-                        height=request.img_height,
-                        step=request.step,
-                        cfg=request.cfg,
-                        upscale_factor=request.upscale_factor,
-                    )
-
-                    net_result.status = status
-                    net_result.file_path = file_path
-
-                end_time = datetime.now()
-                processing_time = (end_time - start_time).total_seconds()
-
-                host = f"[{self.local_ip}]:{self.port}" if self.is_v6 else f"{self.local_ip}:{self.port}"
-                # 构建响应
-                response = {
-                    "request_id": request_id,
-                    "status": net_result.status,
-                    "message": "图像生成成功",
-                    "image_url": f"http://{host}/api/images/{request_id}",
-                    "image_paths": net_result.file_path,
+        @self.app.post("/api/enqueue")
+        async def enqueue(request: AIImageServer.ImageRequest):
+            # 创建参数ID
+            prompt_id = generate_prompt_id(
+                request.workflow,
+                request.model,
+                request.prompt,
+                request.seed,
+                request.img_width,
+                request.img_height,
+                request.upscale_factor,
+                request.step,
+                request.cfg
+            )
+            # 通过参数ID获取请求ID
+            request_id = _get_request_id(prompt_id)
+            # 查找图像文件
+            image_files = find_images(request_id)
+            if image_files and len(image_files) > 0:
+                self.running_request[prompt_id] = request
+                return {
+                    "prompt_id": prompt_id,
+                    "code": http.client.OK,
+                    "message": 'success',
                     "parameters": request.model_dump(),
-                    "created_at": start_time.isoformat(),
-                    "processing_time": processing_time
+                    "utc_timestamp": f"{_get_datetime_now_utc()}",
+                    "file_exists": True,
                 }
 
-                logger.info(f"请求完成: {request_id}, 耗时: {processing_time:.2f}秒")
+            if prompt_id in self.running_request:
+                return {
+                    "prompt_id": prompt_id,
+                    "code": http.client.CONFLICT,
+                    "message": f"request is already in queue.",
+                    "parameters": request.model_dump(),
+                    "utc_timestamp": f"{_get_datetime_now_utc()}",
+                }
 
-                return response
+            self.prompt_id = prompt_id
 
-            except Exception as e:
-                logger.error(f"图像生成失败: {str(e)}")
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"图像生成失败: {str(e)}"
-                )
+            # 准备提示词
+            if len(wf.workflow_func_map) == 0:
+                wf.load_workflows()
+            workflow_prompt_func = wf.workflow_func_map[request.workflow]
+            if workflow_prompt_func is None:
+                return {
+                    "prompt_id": self.prompt_id,
+                    "code": http.client.NOT_FOUND,
+                    "message": f"workflow {request.workflow} not found",
+                    "parameters": request.model_dump(),
+                    "utc_timestamp": f"{_get_datetime_now_utc()}",
+                }
+
+            prompt_json = workflow_prompt_func(
+                model=request.model,
+                prompt_p=request.prompt,
+                seed=request.seed,
+                width=request.img_width,
+                height=request.img_height,
+                step=request.step,
+                cfg=request.cfg,
+                upscale_factor=request.upscale_factor
+            )
+
+            # 通过 HTTP 提交任务
+            response = queue_prompt(prompt_json, self.client_id, prompt_id)
+            if response is not None:
+                if response.code == 200:
+                    self.running_request[prompt_id] = request
+                # response_body = response.read()
+                return {
+                    "prompt_id": self.prompt_id,
+                    "code": response.code,
+                    "message": response.msg,
+                    "parameters": request.model_dump(),
+                    "utc_timestamp": f"{_get_datetime_now_utc()}",
+                }
+
+            return {
+                "prompt_id": self.prompt_id,
+                "code": http.client.INTERNAL_SERVER_ERROR,
+                "message": f"internal server error",
+                "parameters": request.model_dump(),
+                "utc_timestamp": f"{_get_datetime_now_utc()}",
+            }
+
+        @self.app.post("/api/interrupt")
+        async def interrupt(request: AIImageServer.InterruptRequest):
+            data = json.dumps(request.model_dump()).encode('utf-8')
+            req = urllib.request.Request(f"http://{server_address}/interrupt", data=data)
+            with urllib.request.urlopen(req) as response:
+                if response.code == 200 and request.prompt_id in self.running_request:
+                    self.running_request.pop(request.prompt_id)
+                return {
+                    "status_code": response.code,
+                    "message": response.msg,
+                    "prompt_id": request.prompt_id,
+                }
+
 
         def find_images(request_id: str):
             # 查找图像文件
@@ -401,13 +397,14 @@ class AIImageServer:
             image_files = list(Path(func()).glob(f"*_{request_id}_*.png"))
             return image_files
 
-        @self.app.get("/api/images/{request_id}")
-        async def get_image(request_id: str):
+        @self.app.get("/api/download/{prompt_id}")
+        async def _download(prompt_id: str):
             """
             获取生成的图像
             """
             from fastapi.responses import FileResponse
 
+            request_id = _get_request_id(prompt_id)
             # 查找图像文件
             image_files = find_images(request_id)
 
@@ -415,23 +412,80 @@ class AIImageServer:
                 raise HTTPException(status_code=404, detail="图像未找到")
 
             image_file = image_files[0]
-
+            file_name = os.path.basename(image_file)
             return FileResponse(
                 path=image_file,
                 media_type="image/png",
-                filename=f"generated_{request_id}.png"
+                filename=file_name
             )
 
-        @self.app.get("/api/status/{request_id}")
-        async def check_status(request_id: str):
+        @self.app.get("/api/images/{prompt_id}")
+        async def get_image_(prompt_id: str):
             """
-            检查图像生成状态
+            获取生成的图像
             """
+
+            request_id = _get_request_id(prompt_id)
+
+            if not prompt_id in self.running_request:
+                file_names = find_images(request_id)
+                if file_names is not None and len(file_names) > 0:
+                    return {
+                        'prompt_id': prompt_id,
+                        'code': http.client.OK,
+                        'message': f"OK",
+                        'media_type': "image/png",
+                        'filename': file_names[0].name,
+                        "utc_timestamp": f"{_get_datetime_now_utc()}",
+                    }
+                return {
+                    'prompt_id': prompt_id,
+                    "code": http.client.NOT_FOUND,
+                    "message": f"prompt {prompt_id} not found",
+                    "utc_timestamp": f"{_get_datetime_now_utc()}",
+                }
+
+            _request = self.running_request[prompt_id]
+
+            history = get_history(prompt_id)
+            if history is not None and len(history) > 0:
+                filename = ''
+                filepath = ''
+                """提取图片数据"""
+                images, _ = await get_output_images_from_history(prompt_id, history=history[prompt_id])
+                if images is not None and isinstance(images, dict):
+                    no = 0
+                    for node_id in images:
+                        for image_data in images[node_id]:
+                            from PIL import Image
+                            import io
+                            image = Image.open(io.BytesIO(image_data))
+
+                            # 保存图像
+                            filename = f'{datetime.now().strftime("%Y%m%d_%H%M%S")}_{_request.seed}_{request_id}_{no:05d}.png'
+                            func = common_functions['get_today_output_directory']
+                            filepath = os.path.join(func(), filename)
+
+                            image.save(filepath, "PNG")
+                            logger.info(f"图像已保存: {filepath}")
+                            no += 1
+
+                if os.path.exists(filepath) and os.path.isfile(filepath):
+                    self.running_request.pop(prompt_id)
+                    return {
+                        'prompt_id': prompt_id,
+                        'code': http.client.OK,
+                        'message': f"OK",
+                        'media_type': "image/png",
+                        'filename': filename,
+                        "utc_timestamp": f"{_get_datetime_now_utc()}",
+                    }
+
             return {
-                "request_id": request_id,
-                "status": "available",
-                "message": "服务器在线",
-                "timestamp": datetime.now().isoformat()
+                'prompt_id': prompt_id,
+                'code': http.client.NO_CONTENT,
+                'message': f"processing, no content yet.",
+                "utc_timestamp": f"{_get_datetime_now_utc()}",
             }
 
         @self.app.get("/api/stats")
@@ -451,34 +505,6 @@ class AIImageServer:
                 "uptime": self.get_uptime(),
                 "server_address": f"http://[{self.local_ip}]:{self.port}" if self.is_v6 else f"http://{self.local_ip}:{self.port}"
             }
-
-    async def generate_ai_image(self, prompt_id, request_id, workflow, model, prompt, seed, width, height, step, cfg, upscale_factor):
-        """图像生成"""
-        logger.info(f"开始生成图像: {request_id}")
-
-        status = "failed"
-        file_path = []
-        images = await get_images(self.client_id, prompt_id, workflow, model, prompt, seed, width, height, step, cfg, upscale_factor)
-        if images is not None and isinstance(images, dict):
-            no = 0
-            for node_id in images:
-                for image_data in images[node_id]:
-                    from PIL import Image
-                    import io
-                    image = Image.open(io.BytesIO(image_data))
-
-                    # 保存图像
-                    filename = f'{datetime.now().strftime("%Y%m%d_%H%M%S")}_{seed}_{request_id}_{no:05d}.png'
-                    func = common_functions['get_today_output_directory']
-                    filepath = os.path.join(func(), filename)
-
-                    image.save(filepath, "PNG")
-                    logger.info(f"图像已保存: {filepath}")
-                    file_path.append(filepath)
-                    status = "success"
-                    no += 1
-
-        return status, file_path
 
     def run_server(self):
         # 如果端口为0，自动查找可用端口
