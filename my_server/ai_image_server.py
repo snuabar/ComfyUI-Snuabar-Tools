@@ -95,6 +95,22 @@ async def get_output_images_from_history(prompt_id, history=None):
     return output_images, history
 
 
+async def get_output_video_from_history(prompt_id, history=None):
+    """提取视频数据"""
+    # 获取结果
+    if history is None:
+        history = get_history(prompt_id)[prompt_id]
+    output_videos = {}
+    for node_id in history['outputs']:
+        node_output = history['outputs'][node_id]
+        videos = []
+        if 'gifs' in node_output:
+            for video in node_output['gifs']:
+                videos.append(video)
+        output_videos[node_id] = videos
+    return output_videos, history
+
+
 def get_local_ips():
     """获取本机所有局域网IP地址（IPv4和IPv6）"""
     local_ips = {
@@ -180,7 +196,7 @@ class AIImageServer:
         self.is_running = False
         self.client_id = str(uuid.uuid4())
         self.prompt_id = None
-        self.running_request: dict[str, AIImageServer.ImageRequest] = {}
+        self.running_request: dict[str, AIImageServer.QueueRequest] = {}
 
         # 创建FastAPI应用
         self.app = FastAPI(
@@ -218,7 +234,7 @@ class AIImageServer:
         raise OSError(f"在端口 {start_port}-{start_port + max_attempts - 1} 范围内找不到可用端口")
 
     # 请求模型
-    class ImageRequest(BaseModel):
+    class QueueRequest(BaseModel):
         workflow: str = Field(..., description="工作流", min_length=1, max_length=1000)
         model: str = Field(None, description="模型", min_length=1, max_length=1000)
         prompt: str = Field(..., description="图像描述提示词", min_length=1, max_length=1000)
@@ -231,6 +247,7 @@ class AIImageServer:
         upscale_factor: Optional[float] = Field(None, description="放大系数")
         step: Optional[int] = Field(None, description="步数")
         cfg: Optional[float] = Field(None, description="相关性CFG")
+        seconds: int = Field(0, description="视频时长（秒）")
 
     # 响应模型
     class ImageResponse(BaseModel):
@@ -292,7 +309,7 @@ class AIImageServer:
             }
 
         @self.app.post("/api/enqueue")
-        async def enqueue(request: AIImageServer.ImageRequest):
+        async def enqueue(request: AIImageServer.QueueRequest):
             # 创建参数ID
             prompt_id = generate_prompt_id(
                 request.workflow,
@@ -303,13 +320,14 @@ class AIImageServer:
                 request.img_height,
                 request.upscale_factor,
                 request.step,
-                request.cfg
+                request.cfg,
+                request.seconds,
             )
             # 通过参数ID获取请求ID
             request_id = _get_request_id(prompt_id)
             # 查找图像文件
-            image_files = find_images(request_id)
-            if image_files and len(image_files) > 0:
+            _files, is_video = find_output_file(request_id)
+            if _files and len(_files) > 0:
                 self.running_request[prompt_id] = request
                 return {
                     "prompt_id": prompt_id,
@@ -352,7 +370,8 @@ class AIImageServer:
                 height=request.img_height,
                 step=request.step,
                 cfg=request.cfg,
-                upscale_factor=request.upscale_factor
+                upscale_factor=request.upscale_factor,
+                seconds=request.seconds,
             )
 
             # 通过 HTTP 提交任务
@@ -390,12 +409,15 @@ class AIImageServer:
                     "prompt_id": request.prompt_id,
                 }
 
-
-        def find_images(request_id: str):
+        def find_output_file(request_id: str):
             # 查找图像文件
             func = common_functions['get_today_output_directory']
-            image_files = list(Path(func()).glob(f"*_{request_id}_*.png"))
-            return image_files
+            files = list(Path(func()).glob(f"*_{request_id}_*.png"))
+            if files is None or len(files) == 0:
+                files = list(Path(func()).glob(f"*_{request_id}_*.mp4"))
+                if files is not None and len(files) > 0:
+                    return files, True
+            return files, False
 
         @self.app.get("/api/download/{prompt_id}")
         async def _download(prompt_id: str):
@@ -406,21 +428,21 @@ class AIImageServer:
 
             request_id = _get_request_id(prompt_id)
             # 查找图像文件
-            image_files = find_images(request_id)
+            output_files, is_video = find_output_file(request_id)
 
-            if not image_files:
-                raise HTTPException(status_code=404, detail="图像未找到")
+            if not output_files:
+                raise HTTPException(status_code=404, detail="文件未找到")
 
-            image_file = image_files[0]
-            file_name = os.path.basename(image_file)
+            output_file = output_files[0]
+            file_name = os.path.basename(output_file)
             return FileResponse(
-                path=image_file,
-                media_type="image/png",
+                path=output_file,
+                media_type="video/mp4" if is_video else "image/png",
                 filename=file_name
             )
 
         @self.app.get("/api/images/{prompt_id}")
-        async def get_image_(prompt_id: str):
+        async def get_output_files(prompt_id: str):
             """
             获取生成的图像
             """
@@ -428,13 +450,13 @@ class AIImageServer:
             request_id = _get_request_id(prompt_id)
 
             if not prompt_id in self.running_request:
-                file_names = find_images(request_id)
+                file_names, is_video = find_output_file(request_id)
                 if file_names is not None and len(file_names) > 0:
                     return {
                         'prompt_id': prompt_id,
                         'code': http.client.OK,
                         'message': f"OK",
-                        'media_type': "image/png",
+                        'media_type': "video/mp4" if is_video else "image/png",
                         'filename': file_names[0].name,
                         "utc_timestamp": f"{_get_datetime_now_utc()}",
                     }
@@ -451,24 +473,38 @@ class AIImageServer:
             if history is not None and len(history) > 0:
                 filename = ''
                 filepath = ''
-                """提取图片数据"""
-                images, _ = await get_output_images_from_history(prompt_id, history=history[prompt_id])
-                if images is not None and isinstance(images, dict):
-                    no = 0
-                    for node_id in images:
-                        for image_data in images[node_id]:
-                            from PIL import Image
-                            import io
-                            image = Image.open(io.BytesIO(image_data))
+                is_video = _request.seconds > 0
+                if is_video:
+                    videos, _ = await get_output_video_from_history(prompt_id, history=history[prompt_id])
+                    if videos is not None and isinstance(videos, dict):
+                        no = 0
+                        for node_id in videos:
+                            for video_data in videos[node_id]:
+                                # 转移视频
+                                ori_file = video_data['fullpath']
+                                filename = f'{datetime.now().strftime("%Y%m%d_%H%M%S")}_{_request.seed}_{request_id}_{no:05d}.mp4'
+                                func = common_functions['get_today_output_directory']
+                                filepath = os.path.join(func(), filename)
+                                os.rename(ori_file, filepath)
+                                no += 1
+                else:
+                    images, _ = await get_output_images_from_history(prompt_id, history=history[prompt_id])
+                    if images is not None and isinstance(images, dict):
+                        no = 0
+                        for node_id in images:
+                            for image_data in images[node_id]:
+                                from PIL import Image
+                                import io
+                                image = Image.open(io.BytesIO(image_data))
 
-                            # 保存图像
-                            filename = f'{datetime.now().strftime("%Y%m%d_%H%M%S")}_{_request.seed}_{request_id}_{no:05d}.png'
-                            func = common_functions['get_today_output_directory']
-                            filepath = os.path.join(func(), filename)
+                                # 保存图像
+                                filename = f'{datetime.now().strftime("%Y%m%d_%H%M%S")}_{_request.seed}_{request_id}_{no:05d}.png'
+                                func = common_functions['get_today_output_directory']
+                                filepath = os.path.join(func(), filename)
 
-                            image.save(filepath, "PNG")
-                            logger.info(f"图像已保存: {filepath}")
-                            no += 1
+                                image.save(filepath, "PNG")
+                                logger.info(f"图像已保存: {filepath}")
+                                no += 1
 
                 if os.path.exists(filepath) and os.path.isfile(filepath):
                     self.running_request.pop(prompt_id)
@@ -476,7 +512,7 @@ class AIImageServer:
                         'prompt_id': prompt_id,
                         'code': http.client.OK,
                         'message': f"OK",
-                        'media_type': "image/png",
+                        'media_type': "video/mp4" if is_video else "image/png",
                         'filename': filename,
                         "utc_timestamp": f"{_get_datetime_now_utc()}",
                     }

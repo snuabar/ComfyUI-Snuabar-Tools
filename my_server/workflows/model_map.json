@@ -1,4 +1,50 @@
 {
-  "t2i": ["checkpoints"],
-  "t2i_wan22": []
+  "t2i": {
+    "displayName": "文生图",
+    "outputType": "image",
+    "modelTypes": [
+      "checkpoints"
+    ],
+    "excludeModels": [
+      "SDXL-TURBO",
+      "Qwen-Rapid-AIO-NSFW-v19"
+    ],
+    "defaultParameters": {
+      "step": 22,
+      "cfg": 8.0
+    }
+  },
+  "t2i_SDXL_turbo": {
+    "displayName": "文生图(SDXL Turbo)",
+    "outputType": "image",
+    "modelTypes": [],
+    "excludeModels": [],
+    "defaultParameters": {
+      "step": 4,
+      "cfg": 1.0
+    }
+  },
+  "t2i_wan22": {
+    "displayName": "文生图(Wan2.2_NSFW)",
+    "outputType": "image",
+    "modelTypes": [],
+    "excludeModels": [],
+    "defaultParameters": {
+      "step": 10,
+      "cfg": 1.0
+    }
+  },
+  "t2v_wan22": {
+    "displayName": "文生视频(Wan2.2_NSFW)",
+    "outputType": "video",
+    "modelTypes": [],
+    "excludeModels": [],
+    "defaultParameters": {
+      "step": 6,
+      "cfg": 1.0,
+      "seconds": 5,
+      "width": 720,
+      "height": 480
+    }
+  }
 }
