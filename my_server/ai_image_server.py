@@ -458,12 +458,18 @@ class AIImageServer:
         def find_output_file(request_id: str):
             # 查找图像文件
             func = common_functions['get_today_output_directory']
-            files = list(Path(func()).glob(f"*_{request_id}_*.png"))
-            if files is None or len(files) == 0:
-                files = list(Path(func()).glob(f"*_{request_id}_*.mp4"))
-                if files is not None and len(files) > 0:
-                    return files, True
-            return files, False
+            files = list(Path(func()).glob(f"*_{request_id}_*.*"))
+            found_files = []
+            is_video = False
+            for f in files:
+                if f.name.endswith("[-1].png"):
+                    continue
+                if f.name.endswith(".png") or f.name.endswith(".mp4"):
+                    found_files.append(f)
+                    is_video = f.name.endswith(".mp4")
+                    break
+
+            return found_files, is_video
 
         @self.app.get("/api/download/{prompt_id}")
         async def _download(prompt_id: str):
