@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field
 
 import folder_paths
 import workflows as wf
+from comfy_execution.jobs import JobStatus
 
 common_functions = {}
 
@@ -70,6 +71,15 @@ def get_history(prompt_id=None):
         url = "http://{}/history".format(server_address)
     else:
         url = "http://{}/history/{}".format(server_address, prompt_id)
+    with urllib.request.urlopen(url) as response:
+        return json.loads(response.read())
+
+
+def get_jobs(prompt_id=None):
+    if prompt_id is None:
+        url = f"http://{server_address}/api/jobs"
+    else:
+        url = f"http://{server_address}/api/jobs/{prompt_id}"
     with urllib.request.urlopen(url) as response:
         return json.loads(response.read())
 
@@ -175,6 +185,42 @@ class NetResult:
 
 net_params = NetParams()
 net_result = NetResult()
+
+
+def _get_job_status(job):
+    if job is not None and isinstance(job, dict) and 'status' in job:
+        return job['status']
+    return ''
+
+
+def _get_output_video_from_job(job):
+    output_videos = {}
+    for node_id in job['outputs']:
+        node_output = job['outputs'][node_id]
+        videos = []
+        if 'gifs' in node_output:
+            for video in node_output['gifs']:
+                videos.append(video)
+        output_videos[node_id] = videos
+    return output_videos
+
+
+def _get_output_images_from_job(job):
+    """提取图片数据"""
+    output_images = {}
+    for node_id in job['outputs']:
+        node_output = job['outputs'][node_id]
+        images_output = []
+        if 'images' in node_output:
+            for image in node_output['images']:
+                image_data = get_image(
+                    image['filename'],
+                    image['subfolder'],
+                    image['type']
+                )
+                images_output.append(image_data)
+        output_images[node_id] = images_output
+    return output_images
 
 
 class AIImageServer:
@@ -456,6 +502,7 @@ class AIImageServer:
                         'prompt_id': prompt_id,
                         'code': http.client.OK,
                         'message': f"OK",
+                        'status': JobStatus.COMPLETED,
                         'media_type': "video/mp4" if is_video else "image/png",
                         'filename': file_names[0].name,
                         "utc_timestamp": f"{_get_datetime_now_utc()}",
@@ -464,31 +511,60 @@ class AIImageServer:
                     'prompt_id': prompt_id,
                     "code": http.client.NOT_FOUND,
                     "message": f"prompt {prompt_id} not found",
+                    'status': JobStatus.FAILED,
                     "utc_timestamp": f"{_get_datetime_now_utc()}",
                 }
 
             _request = self.running_request[prompt_id]
 
-            history = get_history(prompt_id)
-            if history is not None and len(history) > 0:
+            job = get_jobs(prompt_id)
+            _status = _get_job_status(job)
+            if _status == JobStatus.COMPLETED:
+                # history = get_history(prompt_id)
+                # if history is not None and len(history) > 0:
+                end_time = f"{_get_datetime_now_utc()}"
+                if 'execution_end_time' in job:
+                    end_time = f"{job['execution_end_time']}"
                 filename = ''
                 filepath = ''
                 is_video = _request.seconds > 0
                 if is_video:
-                    videos, _ = await get_output_video_from_history(prompt_id, history=history[prompt_id])
+                    # videos, _ = await get_output_video_from_history(prompt_id, history=history[prompt_id])
+                    videos = _get_output_video_from_job(job)
                     if videos is not None and isinstance(videos, dict):
                         no = 0
                         for node_id in videos:
                             for video_data in videos[node_id]:
                                 # 转移视频
                                 ori_file = video_data['fullpath']
-                                filename = f'{datetime.now().strftime("%Y%m%d_%H%M%S")}_{_request.seed}_{request_id}_{no:05d}.mp4'
+                                filename_no_ext = f'{datetime.now().strftime("%Y%m%d_%H%M%S")}_{_request.seed}_{request_id}_{no:05d}'
+                                filename = f'{filename_no_ext}.mp4'
                                 func = common_functions['get_today_output_directory']
                                 filepath = os.path.join(func(), filename)
                                 os.rename(ori_file, filepath)
                                 no += 1
+
+                                try:
+                                    # 转移尾帧图像
+                                    ori_file_without_ext = os.path.splitext(ori_file)[0]
+                                    last_frame = ori_file_without_ext + '_.png'
+                                    if os.path.exists(last_frame):
+                                        dest_last_frame = os.path.join(func(), filename_no_ext + '_[-1].png')
+                                        os.rename(last_frame, dest_last_frame)
+                                except Exception as e:
+                                    print(f"首帧图像清理失败：{e}")
+
+                                try:
+                                    # 清理自动生成的首帧图像
+                                    ori_file_without_ext = os.path.splitext(ori_file)[0]
+                                    first_frame = ori_file_without_ext + '.png'
+                                    if os.path.exists(first_frame):
+                                        os.remove(first_frame)
+                                except Exception as e:
+                                    print(f"首帧图像清理失败：{e}")
                 else:
-                    images, _ = await get_output_images_from_history(prompt_id, history=history[prompt_id])
+                    # images, _ = await get_output_images_from_history(prompt_id, history=history[prompt_id])
+                    images = _get_output_images_from_job(job)
                     if images is not None and isinstance(images, dict):
                         no = 0
                         for node_id in images:
@@ -512,15 +588,42 @@ class AIImageServer:
                         'prompt_id': prompt_id,
                         'code': http.client.OK,
                         'message': f"OK",
+                        'status': _status,
                         'media_type': "video/mp4" if is_video else "image/png",
                         'filename': filename,
-                        "utc_timestamp": f"{_get_datetime_now_utc()}",
+                        "utc_timestamp": end_time,
                     }
+            elif _status == JobStatus.PENDING:
+                end_time = f"{_get_datetime_now_utc()}"
+                if 'execution_end_time' in job:
+                    end_time = f"{job['execution_end_time']}"
+                return {
+                    'prompt_id': prompt_id,
+                    'code': http.client.ACCEPTED,
+                    'message': "pending",
+                    'status': _status,
+                    "utc_timestamp": end_time,
+                }
+            elif _status == JobStatus.FAILED:
+                end_time = f"{_get_datetime_now_utc()}"
+                error_msg = f"unknown failure."
+                if 'execution_error' in job:
+                    error_msg = job['execution_error']
+                if 'execution_end_time' in job:
+                    end_time = f"{job['execution_end_time']}"
+                return {
+                    'prompt_id': prompt_id,
+                    'code': http.client.EXPECTATION_FAILED,
+                    'message': error_msg,
+                    'status': _status,
+                    "utc_timestamp": end_time,
+                }
 
             return {
                 'prompt_id': prompt_id,
                 'code': http.client.NO_CONTENT,
-                'message': f"processing, no content yet.",
+                'message': f"processing",
+                'status': _status,
                 "utc_timestamp": f"{_get_datetime_now_utc()}",
             }
 
