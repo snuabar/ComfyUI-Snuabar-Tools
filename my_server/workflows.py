@@ -194,6 +194,40 @@ def t2v_wan22(**kwargs):
         print(f"t2i. e: {e}")
         return None
 
+def t2v_wan22_lite(**kwargs):
+    prompt_p = kwargs['prompt_p'] if 'prompt_p' in kwargs else ''
+    prompt_n = kwargs['prompt_n'] if 'prompt_n' in kwargs else ''
+    width = kwargs['width'] if 'width' in kwargs else 512
+    height = kwargs['height'] if 'height' in kwargs else 512
+    seed = kwargs['seed'] if 'seed' in kwargs else 0
+    step = kwargs['step'] if 'step' in kwargs else 10
+    cfg = kwargs['cfg'] if 'cfg' in kwargs else 1.0
+    seconds = kwargs['seconds'] if 'seconds' in kwargs else 1
+    length = 16 * seconds + 1
+    try:
+        json_path = __get_prompt_file('t2v_wan22_lite')
+        with open(json_path, 'r', encoding='utf-8') as f:
+            prompt = json.loads(f.read())
+        if prompt_p is not None and prompt_p != "":
+            _x = __get_condition_x(prompt, 'positive', "WanImageToVideo")
+            __set_prompt_input(prompt, 'CLIPTextEncode', 'text', prompt_p, x=_x)
+        if width > 5:
+            __set_prompt_input(prompt, 'WanImageToVideo', 'width', width)
+        if height > 5:
+            __set_prompt_input(prompt, 'WanImageToVideo', 'height', height)
+        if length > 1:
+            __set_prompt_input(prompt, 'WanImageToVideo', 'length', length)
+        if seed != 0:
+            __set_prompt_input(prompt, 'KSampler', 'seed', seed)
+        if step != 0:
+            __set_prompt_input(prompt, 'KSampler', 'steps', step)
+        if cfg != 0.0:
+            __set_prompt_input(prompt, 'KSampler', 'cfg', cfg)
+        return prompt
+    except Exception as e:
+        print(f"t2i. e: {e}")
+        return None
+
 def t2i_SDXL_turbo(**kwargs):
     prompt_p = kwargs['prompt_p'] if 'prompt_p' in kwargs else ''
     prompt_n = kwargs['prompt_n'] if 'prompt_n' in kwargs else ''

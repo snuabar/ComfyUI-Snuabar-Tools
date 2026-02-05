@@ -1,6 +1,7 @@
 {
   "t2i": {
     "displayName": "文生图",
+    "inputType": "text",
     "outputType": "image",
     "modelTypes": [
       "checkpoints"
@@ -16,6 +17,7 @@
   },
   "t2i_SDXL_turbo": {
     "displayName": "文生图(SDXL Turbo)",
+    "inputType": "text",
     "outputType": "image",
     "modelTypes": [],
     "excludeModels": [],
@@ -26,6 +28,7 @@
   },
   "t2i_wan22": {
     "displayName": "文生图(Wan2.2_NSFW)",
+    "inputType": "text",
     "outputType": "image",
     "modelTypes": [],
     "excludeModels": [],
@@ -36,6 +39,21 @@
   },
   "t2v_wan22": {
     "displayName": "文生视频(Wan2.2_NSFW)",
+    "inputType": "text",
+    "outputType": "video",
+    "modelTypes": [],
+    "excludeModels": [],
+    "defaultParameters": {
+      "step": 6,
+      "cfg": 1.0,
+      "seconds": 5,
+      "width": 720,
+      "height": 480
+    }
+  },
+  "t2v_wan22_lite": {
+    "displayName": "文生视频_lite(Wan2.2_NSFW)",
+    "inputType": "text",
     "outputType": "video",
     "modelTypes": [],
     "excludeModels": [],
