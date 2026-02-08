@@ -156,11 +156,11 @@
         0
       ],
       "image2": [
-        "123",
+        "126",
         0
       ],
       "image3": [
-        "108",
+        "127",
         0
       ]
     },
@@ -171,7 +171,7 @@
   },
   "111": {
     "inputs": {
-      "prompt": "",
+      "prompt": "给男人换上西装，双臂胸前交叉。狗狗坐在他左肩膀上。",
       "clip": [
         "38",
         0
@@ -185,11 +185,11 @@
         0
       ],
       "image2": [
-        "123",
+        "126",
         0
       ],
       "image3": [
-        "108",
+        "127",
         0
       ]
     },
@@ -200,8 +200,8 @@
   },
   "112": {
     "inputs": {
-      "width": 512,
-      "height": 512,
+      "width": 768,
+      "height": 1024,
       "batch_size": 1
     },
     "class_type": "EmptySD3LatentImage",
@@ -224,7 +224,7 @@
   "117": {
     "inputs": {
       "lora_name": "qwen-edit-remove-clothes.safetensors",
-      "strength_model": 1.0,
+      "strength_model": 1.1,
       "model": [
         "115",
         0
@@ -268,6 +268,36 @@
     "class_type": "PreviewImage",
     "_meta": {
       "title": "预览图像"
+    }
+  },
+  "126": {
+    "inputs": {
+      "upscale_method": "lanczos",
+      "megapixels": 1,
+      "resolution_steps": 1,
+      "image": [
+        "123",
+        0
+      ]
+    },
+    "class_type": "ImageScaleToTotalPixels",
+    "_meta": {
+      "title": "缩放图像（像素）"
+    }
+  },
+  "127": {
+    "inputs": {
+      "upscale_method": "lanczos",
+      "megapixels": 1,
+      "resolution_steps": 1,
+      "image": [
+        "108",
+        0
+      ]
+    },
+    "class_type": "ImageScaleToTotalPixels",
+    "_meta": {
+      "title": "缩放图像（像素）"
     }
   }
 }
