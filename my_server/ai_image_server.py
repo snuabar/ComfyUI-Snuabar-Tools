@@ -4,6 +4,7 @@ import http.client
 import json
 import logging
 import os.path
+import shutil
 import socket
 import threading
 import urllib
@@ -15,7 +16,7 @@ from pathlib import Path
 from typing import Optional, List
 
 import uvicorn
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Form, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -30,6 +31,66 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 server_address = "127.0.0.1:8188"
+
+
+def calculate_file_hash(file_path, algorithm='md5'):
+    """计算文件的哈希值"""
+    hash_func = hashlib.md5() if algorithm == 'md5' else hashlib.sha256()
+
+    with open(file_path, 'rb') as f:
+        # 分块读取大文件，避免内存问题
+        for chunk in iter(lambda: f.read(4096), b""):
+            hash_func.update(chunk)
+
+    return hash_func.hexdigest()
+
+
+def find_file_by_hash(directory, target_hash, algorithm='md5'):
+    """在目录中查找指定哈希值的文件"""
+
+    hash_map = {}
+    hash_map_file = os.path.join(directory, 'hash_map.json')
+    if os.path.exists(hash_map_file) and os.path.isfile(hash_map_file):
+        with open(hash_map_file, 'r', encoding='utf-8') as f:
+            hash_map = json.loads(f.read())
+
+    hash_map_changed = False
+    found_file_path = None
+    for root, dirs, files in os.walk(directory):
+        for filename in files:
+            file_path = os.path.join(root, filename)
+            if file_path in hash_map:
+                file_hash = hash_map[file_path]
+            else:
+                try:
+                    file_hash = calculate_file_hash(file_path, algorithm)
+                    hash_map[file_path] = file_hash
+                    hash_map_changed = True
+                except Exception as e:
+                    print(f"Error processing {file_path}: {e}")
+                    continue
+
+            if file_hash == target_hash:
+                found_file_path = file_path
+                break
+
+        if found_file_path is not None:
+            break
+
+    # 清理无效的项
+    invalid_keys = []
+    for key in hash_map:
+        if not os.path.exists(key):
+            invalid_keys.append(key)
+    for key in invalid_keys:
+        del hash_map[key]
+
+    # 反映更新
+    if hash_map_changed:
+        with open(hash_map_file, 'w', encoding='utf-8') as f:
+            f.write(json.dumps(hash_map))
+
+    return found_file_path
 
 
 def _get_datetime_now_utc():
@@ -284,7 +345,7 @@ class AIImageServer:
         workflow: str = Field(..., description="工作流", min_length=1, max_length=1000)
         model: str = Field(None, description="模型", min_length=1, max_length=1000)
         prompt: str = Field(..., description="图像描述提示词", min_length=1, max_length=1000)
-        seed: Optional[int] = Field(None, description="随机种子")
+        seed: int = Field(0, description="随机种子")
         img_width: int = Field(512, description="图像宽度", ge=64, le=4096)
         img_height: int = Field(512, description="图像高度", ge=64, le=4096)
         num_images: Optional[int] = Field(1, description="生成图像数量", ge=1, le=4)
@@ -294,6 +355,8 @@ class AIImageServer:
         step: Optional[int] = Field(None, description="步数")
         cfg: Optional[float] = Field(None, description="相关性CFG")
         seconds: int = Field(0, description="视频时长（秒）")
+        megapixels: float = Field(1.0, description="图像像素（百万）")
+        images: Optional[list] = Field([None, None, None], description="图像名称")
 
     # 响应模型
     class ImageResponse(BaseModel):
@@ -318,13 +381,6 @@ class AIImageServer:
             return {
                 "message": "AI图像生成服务器",
                 "status": "运行中",
-                "endpoints": {
-                    "GET /api/workflows": "获取工作流",
-                    "POST /api/generate": "生成AI图像",
-                    "GET /api/images/{request_id}": "获取生成的图像",
-                    "GET /api/status/{request_id}": "检查生成状态",
-                    "GET /api/stats": "服务器统计信息"
-                },
                 "server_info": {
                     "host": self.host,
                     "port": self.port,
@@ -354,8 +410,54 @@ class AIImageServer:
                 "models": files
             }
 
+        @self.app.get("/api/search/{file_hash}")
+        async def search_files(file_hash: str):
+            found_file = find_file_by_hash(folder_paths.get_input_directory(), file_hash)
+            if found_file is not None and os.path.exists(found_file) and os.path.isfile(found_file):
+                return {
+                    'file_name': os.path.basename(found_file),
+                }
+            raise HTTPException(status_code=404, detail="文件未找到")
+
+        @self.app.post("/api/upload")
+        async def upload_file(description: str = Form(""), file: UploadFile = File(...)):
+            from fastapi.responses import JSONResponse
+            try:
+                _input_dir = folder_paths.get_input_directory()
+                if not os.path.exists(_input_dir):
+                    os.mkdir(_input_dir)
+
+                # 自动重命名
+                n = 1
+                file_location = os.path.join(_input_dir, file.filename)
+                while os.path.exists(file_location):
+                    _parts = os.path.splitext(file_location)
+                    _file_name = f"{_parts[0]}_{n}.{_parts[1]}"
+                    file_location = os.path.join(_input_dir, _file_name)
+                    n += 1
+
+                # 保存文件
+                with open(file_location, "wb") as buffer:
+                    shutil.copyfileobj(file.file, buffer)
+
+                # 返回响应
+                return JSONResponse({
+                    "status": "success",
+                    "message": "文件上传成功",
+                    "filename": file.filename,
+                    "file_url": f"/uploads/{file.filename}",
+                    "file_size": os.path.getsize(file_location),
+                    "uploaded_at": datetime.now().isoformat()
+                })
+            except Exception as e:
+                return JSONResponse(
+                    {"status": "error", "message": str(e)},
+                    status_code=500
+                )
+
         @self.app.post("/api/enqueue")
         async def enqueue(request: AIImageServer.QueueRequest):
+            """ 提交并入列 """
             # 创建参数ID
             prompt_id = generate_prompt_id(
                 request.workflow,
@@ -368,6 +470,10 @@ class AIImageServer:
                 request.step,
                 request.cfg,
                 request.seconds,
+                request.megapixels,
+                request.images[0],
+                request.images[1],
+                request.images[2],
             )
             # 通过参数ID获取请求ID
             request_id = _get_request_id(prompt_id)
@@ -418,6 +524,10 @@ class AIImageServer:
                 cfg=request.cfg,
                 upscale_factor=request.upscale_factor,
                 seconds=request.seconds,
+                megapixels=request.megapixels,
+                image1=request.images[0],
+                image2=request.images[1],
+                image3=request.images[2],
             )
 
             # 通过 HTTP 提交任务
@@ -493,10 +603,10 @@ class AIImageServer:
                 filename=file_name
             )
 
-        @self.app.get("/api/images/{prompt_id}")
-        async def get_output_files(prompt_id: str):
+        @self.app.get("/api/jobs/{prompt_id}")
+        async def get_jobs_status(prompt_id: str):
             """
-            获取生成的图像
+            检查生成状态
             """
 
             request_id = _get_request_id(prompt_id)

@@ -6,7 +6,8 @@
     "modelTypes": [
       "checkpoints"
     ],
-    "excludeModels": [
+    "modelKeywords": [],
+    "excludeModelKeywords": [
       "SDXL-TURBO",
       "Qwen-Rapid-AIO-NSFW-v19"
     ],
@@ -19,8 +20,11 @@
     "displayName": "文生图(SDXL Turbo)",
     "inputType": "text",
     "outputType": "image",
-    "modelTypes": [],
-    "excludeModels": [],
+    "modelTypes": [
+      "checkpoints"
+    ],
+    "modelKeywords": ["SDXL-TURBO"],
+    "excludeModelKeywords": [],
     "defaultParameters": {
       "step": 4,
       "cfg": 1.0
@@ -31,7 +35,8 @@
     "inputType": "text",
     "outputType": "image",
     "modelTypes": [],
-    "excludeModels": [],
+    "modelKeywords": [],
+    "excludeModelKeywords": [],
     "defaultParameters": {
       "step": 10,
       "cfg": 1.0
@@ -42,7 +47,8 @@
     "inputType": "text",
     "outputType": "video",
     "modelTypes": [],
-    "excludeModels": [],
+    "modelKeywords": [],
+    "excludeModelKeywords": [],
     "defaultParameters": {
       "step": 6,
       "cfg": 1.0,
@@ -56,13 +62,27 @@
     "inputType": "text",
     "outputType": "video",
     "modelTypes": [],
-    "excludeModels": [],
+    "modelKeywords": [],
+    "excludeModelKeywords": [],
     "defaultParameters": {
       "step": 6,
       "cfg": 1.0,
       "seconds": 5,
       "width": 720,
       "height": 480
+    }
+  },
+  "i2i_qwen_image_edit_2509": {
+    "displayName": "图生图(千问修图)",
+    "inputType": "image",
+    "outputType": "image",
+    "modelTypes": ["unet"],
+    "modelKeywords": ["-qwen-image-edit-2509-lightning"],
+    "excludeModelKeywords": ["-fp4"],
+    "defaultParameters": {
+      "step": 4,
+      "cfg": 1.0,
+      "megapixels": 2
     }
   }
 }
