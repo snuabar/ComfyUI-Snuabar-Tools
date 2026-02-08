@@ -22,12 +22,15 @@ def __precheck(workflow_x, class_type, key):
             key in workflow_x['inputs'])
 
 
-def __get_condition_x(workflow, condition, class_type='Sampler'):
+def __get_condition_x(workflow, condition, class_type='Sampler', key='text'):
+    if condition not in ['positive', 'negative']:
+        return None
+
     for x in workflow:
         if __precheck(workflow[x], class_type, condition):
             x0 = workflow[x]['inputs'][condition][0]
             while True:
-                if __precheck(workflow[x0], 'TextEncode', 'text'):
+                if __precheck(workflow[x0], 'TextEncode', key):
                     return x0
                 _sub_class_type = workflow[x0]['class_type']
                 if __precheck(workflow[x0], _sub_class_type, condition):
@@ -59,6 +62,17 @@ def __get_prompt_input(workflow, class_type, key, x=None):
     return None
 
 
+def __remove_prompt_input(workflow, class_type, key, x=None):
+    if x is not None and x in workflow:
+        if __precheck(workflow[x], class_type, key):
+            del workflow[x]['inputs'][key]
+            return
+
+    for x in workflow:
+        if __precheck(workflow[x], class_type, key):
+            del workflow[x]['inputs'][key]
+
+
 def __get_upscale_params(width, height, upscale_factor):
     default_mask_blur = 8
     default_tile_padding = 32
@@ -67,6 +81,11 @@ def __get_upscale_params(width, height, upscale_factor):
     tile_width = (width * upscale_factor) // 2
     tile_height = (height * upscale_factor) // 2
     return mask_blur, tile_padding, tile_width, tile_height
+
+
+def __set_node_input(workflow, node, key, value):
+    if node in workflow and 'inputs' in workflow[node] and key in workflow[node]['inputs']:
+        workflow[node]['inputs'][key] = value
 
 
 def t2i(**kwargs):
@@ -159,6 +178,7 @@ def t2i_wan22(**kwargs):
         print(f"t2i. e: {e}")
         return None
 
+
 def t2v_wan22(**kwargs):
     prompt_p = kwargs['prompt_p'] if 'prompt_p' in kwargs else ''
     prompt_n = kwargs['prompt_n'] if 'prompt_n' in kwargs else ''
@@ -194,6 +214,7 @@ def t2v_wan22(**kwargs):
         print(f"t2i. e: {e}")
         return None
 
+
 def t2v_wan22_lite(**kwargs):
     prompt_p = kwargs['prompt_p'] if 'prompt_p' in kwargs else ''
     prompt_n = kwargs['prompt_n'] if 'prompt_n' in kwargs else ''
@@ -227,6 +248,7 @@ def t2v_wan22_lite(**kwargs):
     except Exception as e:
         print(f"t2i. e: {e}")
         return None
+
 
 def t2i_SDXL_turbo(**kwargs):
     prompt_p = kwargs['prompt_p'] if 'prompt_p' in kwargs else ''
@@ -266,6 +288,51 @@ def t2i_SDXL_turbo(**kwargs):
             __set_prompt_input(prompt, 'UltimateSDUpscale', 'tile_width', tile_width)
             __set_prompt_input(prompt, 'UltimateSDUpscale', 'tile_height', tile_height)
         return prompt
+    except Exception as e:
+        print(f"t2i. e: {e}")
+        return None
+
+
+def i2i_qwen_image_edit_2509(**kwargs):
+    model = kwargs['model'] if 'model' in kwargs else None
+    prompt_p = kwargs['prompt_p'] if 'prompt_p' in kwargs else ''
+    image1 = kwargs['image1'] if 'image1' in kwargs else None
+    image2 = kwargs['image2'] if 'image2' in kwargs else None
+    image3 = kwargs['image3'] if 'image3' in kwargs else None
+    seed = kwargs['seed'] if 'seed' in kwargs else 0
+    step = kwargs['step'] if 'step' in kwargs else 4
+    cfg = kwargs['cfg'] if 'cfg' in kwargs else 1.0
+    megapixels = kwargs['megapixels'] if 'megapixels' in kwargs else 1.0
+    try:
+        json_path = __get_prompt_file('i2i_qwen_image_edit_2509')
+        with open(json_path, 'r', encoding='utf-8') as f:
+            workflow = json.loads(f.read())
+        if model is not None:
+            __set_prompt_input(workflow, 'NunchakuQwenImageDiTLoader', 'model_name', model)
+        if prompt_p is not None and prompt_p != "":
+            _x = __get_condition_x(workflow, 'positive', key='prompt')
+            __set_prompt_input(workflow, 'TextEncodeQwenImageEditPlus', 'prompt', prompt_p, x=_x)
+        if image1 is None:
+            __remove_prompt_input(workflow, 'TextEncodeQwenImageEditPlus', 'image1')
+        else:
+            __set_node_input(workflow, '78', 'image', image1)
+        if image2 is None:
+            __remove_prompt_input(workflow, 'TextEncodeQwenImageEditPlus', 'image2')
+        else:
+            __set_node_input(workflow, '123', 'image', image2)
+        if image3 is None:
+            __remove_prompt_input(workflow, 'TextEncodeQwenImageEditPlus', 'image3')
+        else:
+            __set_node_input(workflow, '108', 'image', image3)
+        if seed != 0:
+            __set_prompt_input(workflow, 'KSampler', 'seed', seed)
+        if step != 0:
+            __set_prompt_input(workflow, 'KSampler', 'steps', step)
+        if cfg != 0.0:
+            __set_prompt_input(workflow, 'KSampler', 'cfg', cfg)
+        if megapixels > 1.0:
+            __set_prompt_input(workflow, 'ImageScaleToTotalPixels', 'megapixels', megapixels)
+        return workflow
     except Exception as e:
         print(f"t2i. e: {e}")
         return None
