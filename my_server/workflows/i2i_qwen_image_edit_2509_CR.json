@@ -69,7 +69,7 @@
     "inputs": {
       "shift": 3,
       "model": [
-        "115",
+        "118",
         0
       ]
     },
@@ -219,6 +219,34 @@
     "class_type": "NunchakuQwenImageDiTLoader",
     "_meta": {
       "title": "Nunchaku Qwen-Image DiT Loader"
+    }
+  },
+  "117": {
+    "inputs": {
+      "lora_name": "qwen-edit-remove-clothes.safetensors",
+      "strength_model": 1.1,
+      "model": [
+        "115",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "LoRA加载器（仅模型）"
+    }
+  },
+  "118": {
+    "inputs": {
+      "lora_name": "zimagemeinv9_10.safetensors",
+      "strength_model": 0.6000000000000001,
+      "model": [
+        "117",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "LoRA加载器（仅模型）"
     }
   },
   "123": {

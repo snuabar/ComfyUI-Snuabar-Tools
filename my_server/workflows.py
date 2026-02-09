@@ -293,6 +293,51 @@ def t2i_SDXL_turbo(**kwargs):
         return None
 
 
+def i2i_qwen_image_edit_2509_CR(**kwargs):
+    model = kwargs['model'] if 'model' in kwargs else None
+    prompt_p = kwargs['prompt_p'] if 'prompt_p' in kwargs else ''
+    image1 = kwargs['image1'] if 'image1' in kwargs else None
+    image2 = kwargs['image2'] if 'image2' in kwargs else None
+    image3 = kwargs['image3'] if 'image3' in kwargs else None
+    seed = kwargs['seed'] if 'seed' in kwargs else 0
+    step = kwargs['step'] if 'step' in kwargs else 4
+    cfg = kwargs['cfg'] if 'cfg' in kwargs else 1.0
+    megapixels = kwargs['megapixels'] if 'megapixels' in kwargs else 1.0
+    try:
+        json_path = __get_prompt_file('i2i_qwen_image_edit_2509_CR')
+        with open(json_path, 'r', encoding='utf-8') as f:
+            workflow = json.loads(f.read())
+        if model is not None:
+            __set_prompt_input(workflow, 'NunchakuQwenImageDiTLoader', 'model_name', model)
+        if prompt_p is not None and prompt_p != "":
+            _x = __get_condition_x(workflow, 'positive', key='prompt')
+            __set_prompt_input(workflow, 'TextEncodeQwenImageEditPlus', 'prompt', prompt_p, x=_x)
+        if image1 is None:
+            __remove_prompt_input(workflow, 'TextEncodeQwenImageEditPlus', 'image1')
+        else:
+            __set_node_input(workflow, '78', 'image', image1)
+        if image2 is None:
+            __remove_prompt_input(workflow, 'TextEncodeQwenImageEditPlus', 'image2')
+        else:
+            __set_node_input(workflow, '123', 'image', image2)
+        if image3 is None:
+            __remove_prompt_input(workflow, 'TextEncodeQwenImageEditPlus', 'image3')
+        else:
+            __set_node_input(workflow, '108', 'image', image3)
+        if seed != 0:
+            __set_prompt_input(workflow, 'KSampler', 'seed', seed)
+        if step != 0:
+            __set_prompt_input(workflow, 'KSampler', 'steps', step)
+        if cfg != 0.0:
+            __set_prompt_input(workflow, 'KSampler', 'cfg', cfg)
+        if megapixels > 1.0:
+            __set_prompt_input(workflow, 'ImageScaleToTotalPixels', 'megapixels', megapixels)
+        return workflow
+    except Exception as e:
+        print(f"t2i. e: {e}")
+        return None
+
+
 def i2i_qwen_image_edit_2509(**kwargs):
     model = kwargs['model'] if 'model' in kwargs else None
     prompt_p = kwargs['prompt_p'] if 'prompt_p' in kwargs else ''

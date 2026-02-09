@@ -72,6 +72,19 @@
       "height": 480
     }
   },
+  "i2i_qwen_image_edit_2509_CR": {
+    "displayName": "图生图(千问修图+CR)",
+    "inputType": "image",
+    "outputType": "image",
+    "modelTypes": ["unet"],
+    "modelKeywords": ["-qwen-image-edit-2509-lightning"],
+    "excludeModelKeywords": ["-fp4"],
+    "defaultParameters": {
+      "step": 4,
+      "cfg": 1.0,
+      "megapixels": 2
+    }
+  },
   "i2i_qwen_image_edit_2509": {
     "displayName": "图生图(千问修图)",
     "inputType": "image",
