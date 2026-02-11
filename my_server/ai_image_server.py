@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, List
 
+import aiofiles
 import uvicorn
 from fastapi import FastAPI, HTTPException, Form, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
@@ -602,6 +603,99 @@ class AIImageServer:
                 media_type="video/mp4" if is_video else "image/png",
                 filename=file_name
             )
+
+        @self.app.get("/api/download/{prompt_id}/stream")
+        async def streaming_download(
+                prompt_id: str,
+                chunk_size: int = 8192,
+                buffer_size: int = 1024 * 1024,  # 1MB缓冲
+                enable_compression: bool = False
+        ):
+            """
+            增强版流式传输，支持更多参数
+            """
+            import time
+
+            # 查找文件
+            request_id = _get_request_id(prompt_id)
+            output_files, is_video = find_output_file(request_id)
+            if not output_files:
+                raise HTTPException(status_code=404, detail="文件未找到")
+
+            output_file = output_files[0]
+
+            file_size = output_file.stat().st_size
+            start_time = time.time()
+
+            async def async_file_iterator():
+                """异步文件迭代器，支持进度跟踪"""
+                total_sent = 0
+                buffer = bytearray()
+
+                async with aiofiles.open(output_file, 'rb') as file:
+                    while True:
+                        chunk = await file.read(chunk_size)
+                        if not chunk:
+                            break
+
+                        buffer.extend(chunk)
+                        total_sent += len(chunk)
+
+                        # 当缓冲区达到指定大小时发送
+                        if len(buffer) >= buffer_size:
+                            yield bytes(buffer)
+                            buffer.clear()
+
+                        # 可选：添加延迟以控制传输速度
+                        # await asyncio.sleep(0.001)  # 1ms延迟
+
+                        # 记录进度（可选，可以记录到数据库）
+                        progress = (total_sent / file_size) * 100
+
+                        # 每10%输出一次日志
+                        if int(progress) % 10 == 0 and progress > 0:
+                            elapsed = time.time() - start_time
+                            speed = total_sent / elapsed / 1024  # KB/s
+                            logger.info(f"流式传输进度: {progress:.1f}%, 速度: {speed:.1f} KB/s")
+
+                    # 发送剩余数据
+                    if buffer:
+                        yield bytes(buffer)
+
+            # 设置响应头
+            headers = {
+                "Content-Disposition": f'attachment; filename="stream_{request_id}{output_file.suffix}"',
+                "Content-Length": str(file_size),
+                "X-File-Size": str(file_size),
+                "X-File-Name": output_file.name,
+                "X-Request-ID": request_id,
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+                "Expires": "0"
+            }
+
+            if enable_compression:
+                headers["Content-Encoding"] = "gzip"
+
+            media_type = get_mime_type(output_file.suffix)
+
+            from fastapi.responses import StreamingResponse
+            return StreamingResponse(
+                async_file_iterator(),
+                media_type=media_type,
+                headers=headers
+            )
+
+        def get_mime_type(extension: str) -> str:
+            """根据扩展名获取MIME类型"""
+            mime_types = {
+                '.png': 'image/png',
+                '.jpg': 'image/jpeg',
+                '.jpeg': 'image/jpeg',
+                '.webp': 'image/webp',
+                '.gif': 'image/gif'
+            }
+            return mime_types.get(extension.lower(), 'application/octet-stream')
 
         @self.app.get("/api/jobs/{prompt_id}")
         async def get_jobs_status(prompt_id: str):
