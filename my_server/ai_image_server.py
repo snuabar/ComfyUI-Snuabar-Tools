@@ -566,10 +566,12 @@ class AIImageServer:
                     "prompt_id": request.prompt_id,
                 }
 
-        def find_output_file(request_id: str):
+        def find_output_file(request_id: str, _path: str = None, _search_before = False):
             # 查找图像文件
-            func = common_functions['get_today_output_directory']
-            files = list(Path(func()).glob(f"*_{request_id}_*.*"))
+            if _path is None:
+                func = common_functions['get_today_output_directory']
+                _path = func()
+            files = list(Path(_path).glob(f"*_{request_id}_*.*"))
             found_files = []
             is_video = False
             for f in files:
@@ -579,6 +581,18 @@ class AIImageServer:
                     found_files.append(f)
                     is_video = f.name.endswith(".mp4")
                     break
+
+            if len(found_files) == 0 and _search_before:
+                days = 90
+                while days > 0:
+                    before_func = common_functions['get_before_output_directory']
+                    _path = before_func(days, make_dirs=False)
+                    if not os.path.exists(_path):
+                        continue
+                    found_files = find_output_file(request_id, _path)
+                    if len(found_files) > 0:
+                        break
+                    days -= 1
 
             return found_files, is_video
 
@@ -591,7 +605,7 @@ class AIImageServer:
 
             request_id = _get_request_id(prompt_id)
             # 查找图像文件
-            output_files, is_video = find_output_file(request_id)
+            output_files, is_video = find_output_file(request_id, _search_before=True)
 
             if not output_files:
                 raise HTTPException(status_code=404, detail="文件未找到")
@@ -618,7 +632,7 @@ class AIImageServer:
 
             # 查找文件
             request_id = _get_request_id(prompt_id)
-            output_files, is_video = find_output_file(request_id)
+            output_files, is_video = find_output_file(request_id, _search_before=True)
             if not output_files:
                 raise HTTPException(status_code=404, detail="文件未找到")
 
@@ -655,8 +669,8 @@ class AIImageServer:
                         # 每10%输出一次日志
                         if int(progress) % 10 == 0 and progress > 0:
                             elapsed = time.time() - start_time
-                            speed = total_sent / elapsed / 1024  # KB/s
-                            logger.info(f"流式传输进度: {progress:.1f}%, 速度: {speed:.1f} KB/s")
+                            # speed = total_sent / elapsed / 1024  # KB/s
+                            logger.info(f"流式传输进度: {progress:.1f}%")
 
                     # 发送剩余数据
                     if buffer:
@@ -693,7 +707,8 @@ class AIImageServer:
                 '.jpg': 'image/jpeg',
                 '.jpeg': 'image/jpeg',
                 '.webp': 'image/webp',
-                '.gif': 'image/gif'
+                '.gif': 'image/gif',
+                '.mp4': 'video/mp4',
             }
             return mime_types.get(extension.lower(), 'application/octet-stream')
 
