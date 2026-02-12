@@ -587,11 +587,10 @@ class AIImageServer:
                 while days > 0:
                     before_func = common_functions['get_before_output_directory']
                     _path = before_func(days, make_dirs=False)
-                    if not os.path.exists(_path):
-                        continue
-                    found_files = find_output_file(request_id, _path)
-                    if len(found_files) > 0:
-                        break
+                    if os.path.exists(_path):
+                        found_files, _ = find_output_file(request_id, _path)
+                        if len(found_files) > 0:
+                            break
                     days -= 1
 
             return found_files, is_video
