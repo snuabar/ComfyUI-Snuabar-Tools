@@ -344,8 +344,8 @@ class AIImageServer:
     # 请求模型
     class QueueRequest(BaseModel):
         workflow: str = Field(..., description="工作流", min_length=1, max_length=1000)
-        model: str = Field(None, description="模型", min_length=1, max_length=1000)
-        prompt: str = Field(..., description="图像描述提示词", min_length=1, max_length=1000)
+        model: str = Field(None, description="模型", min_length=0, max_length=1000)
+        prompt: str = Field(..., description="图像描述提示词", min_length=0, max_length=1000)
         seed: int = Field(0, description="随机种子")
         img_width: int = Field(512, description="图像宽度", ge=64, le=4096)
         img_height: int = Field(512, description="图像高度", ge=64, le=4096)
@@ -456,6 +456,18 @@ class AIImageServer:
                     status_code=500
                 )
 
+        def find_last_frame(request: AIImageServer.QueueRequest):
+            if len(request.images) > 0 and request.images[0] is not None:
+                if request.images[0].startswith("prompt_id:"):
+                    _prompt_id = request.images[0][len("prompt_id:"):]
+                    _request_id = _get_request_id(_prompt_id)
+                    _found_file, _ = find_output_file(_request_id)
+                    if _found_file is not None:
+                        _file_path = _found_file[0]
+                        _last_frame_file = os.path.split(_file_path)[0] + "_[-1].png"
+                        if os.path.exists(_last_frame_file):
+                            request.images[0] = _last_frame_file
+
         @self.app.post("/api/enqueue")
         async def enqueue(request: AIImageServer.QueueRequest):
             """ 提交并入列 """
@@ -514,6 +526,9 @@ class AIImageServer:
                     "parameters": request.model_dump(),
                     "utc_timestamp": f"{_get_datetime_now_utc()}",
                 }
+
+            # 如果需要，尝试解析并找到指定prompt_id的最后一帧图像
+            find_last_frame(request)
 
             prompt_json = workflow_prompt_func(
                 model=request.model,
@@ -575,7 +590,7 @@ class AIImageServer:
             found_files = []
             is_video = False
             for f in files:
-                if f.name.endswith("[-1].png"):
+                if f.name.endswith("_[-1].png"):
                     continue
                 if f.name.endswith(".png") or f.name.endswith(".mp4"):
                     found_files.append(f)

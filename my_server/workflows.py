@@ -215,6 +215,47 @@ def t2v_wan22(**kwargs):
         return None
 
 
+def i2v_wan22(**kwargs):
+    prompt_p = kwargs['prompt_p'] if 'prompt_p' in kwargs else ''
+    prompt_n = kwargs['prompt_n'] if 'prompt_n' in kwargs else ''
+    image1 = kwargs['image1'] if 'image1' in kwargs else None
+    width = kwargs['width'] if 'width' in kwargs else 512
+    height = kwargs['height'] if 'height' in kwargs else 512
+    seed = kwargs['seed'] if 'seed' in kwargs else 0
+    step = kwargs['step'] if 'step' in kwargs else 10
+    cfg = kwargs['cfg'] if 'cfg' in kwargs else 1.0
+    seconds = kwargs['seconds'] if 'seconds' in kwargs else 1
+    length = 16 * seconds + 1
+    try:
+        json_path = __get_prompt_file('i2v_wan22')
+        with open(json_path, 'r', encoding='utf-8') as f:
+            prompt = json.loads(f.read())
+        if prompt_p is not None and prompt_p != "":
+            _x = __get_condition_x(prompt, 'positive', "WanImageToVideo")
+            __set_prompt_input(prompt, 'CLIPTextEncode', 'text', prompt_p, x=_x)
+        if width > 5:
+            __set_prompt_input(prompt, 'WanImageToVideo', 'width', width)
+        if height > 5:
+            __set_prompt_input(prompt, 'WanImageToVideo', 'height', height)
+        if length > 1:
+            __set_prompt_input(prompt, 'WanImageToVideo', 'length', length)
+        if seed != 0:
+            __set_prompt_input(prompt, 'KSampler', 'seed', seed)
+        if step != 0:
+            __set_prompt_input(prompt, 'KSampler', 'steps', step)
+        if cfg != 0.0:
+            __set_prompt_input(prompt, 'KSampler', 'cfg', cfg)
+        if image1 is not None:
+            if os.path.exists(image1) and os.path.isfile(image1):  # 如果是文件路径
+                __set_prompt_input(prompt, 'AILab_LoadImageSimple', 'image_path_or_URL', image1)
+            else:  # 如何是文件名
+                __set_prompt_input(prompt, 'AILab_LoadImageSimple', 'image', image1)
+        return prompt
+    except Exception as e:
+        print(f"t2i. e: {e}")
+        return None
+
+
 def t2v_wan22_lite(**kwargs):
     prompt_p = kwargs['prompt_p'] if 'prompt_p' in kwargs else ''
     prompt_n = kwargs['prompt_n'] if 'prompt_n' in kwargs else ''
@@ -307,7 +348,7 @@ def i2i_qwen_image_edit_2509_CR(**kwargs):
         json_path = __get_prompt_file('i2i_qwen_image_edit_2509_CR')
         with open(json_path, 'r', encoding='utf-8') as f:
             workflow = json.loads(f.read())
-        if model is not None:
+        if model is not None and model != "":
             __set_prompt_input(workflow, 'NunchakuQwenImageDiTLoader', 'model_name', model)
         if prompt_p is not None and prompt_p != "":
             _x = __get_condition_x(workflow, 'positive', key='prompt')
@@ -352,7 +393,7 @@ def i2i_qwen_image_edit_2509(**kwargs):
         json_path = __get_prompt_file('i2i_qwen_image_edit_2509')
         with open(json_path, 'r', encoding='utf-8') as f:
             workflow = json.loads(f.read())
-        if model is not None:
+        if model is not None and model != "":
             __set_prompt_input(workflow, 'NunchakuQwenImageDiTLoader', 'model_name', model)
         if prompt_p is not None and prompt_p != "":
             _x = __get_condition_x(workflow, 'positive', key='prompt')

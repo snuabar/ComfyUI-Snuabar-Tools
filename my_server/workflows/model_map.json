@@ -16,20 +16,6 @@
       "cfg": 8.0
     }
   },
-  "t2i_SDXL_turbo": {
-    "displayName": "文生图(SDXL Turbo)",
-    "inputType": "text",
-    "outputType": "image",
-    "modelTypes": [
-      "checkpoints"
-    ],
-    "modelKeywords": ["SDXL-TURBO"],
-    "excludeModelKeywords": [],
-    "defaultParameters": {
-      "step": 4,
-      "cfg": 1.0
-    }
-  },
   "t2i_wan22": {
     "displayName": "文生图(Wan2.2_NSFW)",
     "inputType": "text",
@@ -57,6 +43,21 @@
       "height": 480
     }
   },
+  "i2v_wan22": {
+    "displayName": "图生视频(Wan2.2_NSFW)",
+    "inputType": "image",
+    "outputType": "video",
+    "modelTypes": [],
+    "modelKeywords": [],
+    "excludeModelKeywords": [],
+    "defaultParameters": {
+      "step": 6,
+      "cfg": 1.0,
+      "seconds": 5,
+      "width": 720,
+      "height": 480
+    }
+  },
   "t2v_wan22_lite": {
     "displayName": "文生视频_lite(Wan2.2_NSFW)",
     "inputType": "text",
@@ -70,6 +71,20 @@
       "seconds": 5,
       "width": 720,
       "height": 480
+    }
+  },
+  "t2i_SDXL_turbo": {
+    "displayName": "文生图(SDXL Turbo)",
+    "inputType": "text",
+    "outputType": "image",
+    "modelTypes": [
+      "checkpoints"
+    ],
+    "modelKeywords": ["SDXL-TURBO"],
+    "excludeModelKeywords": [],
+    "defaultParameters": {
+      "step": 4,
+      "cfg": 1.0
     }
   },
   "i2i_qwen_image_edit_2509_CR": {

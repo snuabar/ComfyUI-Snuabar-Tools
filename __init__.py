@@ -11,6 +11,7 @@ from image_auto_select import ImageAutoSelectNote, ImageTempNote
 from net_objects import NetParamNote, NetResultNote
 from common_nodes import AbsPathNode
 from video_tools import SimpleMergeVideosNode
+from sd_upscale_assistant import SDUpscaleAssistant
 
 
 class SnuabarToolsExtension(ComfyExtension):
@@ -24,6 +25,7 @@ class SnuabarToolsExtension(ComfyExtension):
             ImageTempNote,
             AbsPathNode,
             SimpleMergeVideosNode,
+            SDUpscaleAssistant,
         ]
 
 

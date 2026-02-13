@@ -1,0 +1,274 @@
+{
+  "1": {
+    "inputs": {
+      "sage_attention": "auto",
+      "allow_compile": false,
+      "model": [
+        "29",
+        0
+      ]
+    },
+    "class_type": "PathchSageAttentionKJ",
+    "_meta": {
+      "title": "低噪声-Patch Sage Attention KJ"
+    }
+  },
+  "7": {
+    "inputs": {
+      "enable_fp16_accumulation": true,
+      "model": [
+        "1",
+        0
+      ]
+    },
+    "class_type": "ModelPatchTorchSettings",
+    "_meta": {
+      "title": "Model Patch Torch Settings"
+    }
+  },
+  "29": {
+    "inputs": {
+      "model": [
+        "84",
+        0
+      ]
+    },
+    "class_type": "wanBlockSwap",
+    "_meta": {
+      "title": "Wan2.1块交换"
+    }
+  },
+  "30": {
+    "inputs": {
+      "samples": [
+        "113",
+        0
+      ],
+      "vae": [
+        "51",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE解码"
+    }
+  },
+  "51": {
+    "inputs": {
+      "vae_name": "wan_2.1_vae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "加载VAE"
+    }
+  },
+  "69": {
+    "inputs": {
+      "shift": 5.000000000000001,
+      "model": [
+        "7",
+        0
+      ]
+    },
+    "class_type": "ModelSamplingSD3",
+    "_meta": {
+      "title": "采样算法（SD3）"
+    }
+  },
+  "84": {
+    "inputs": {
+      "unet_name": "Wan2.2_Remix_NSFW_i2v_14b_low_lighting_v2.0.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "UNet加载器"
+    }
+  },
+  "85": {
+    "inputs": {
+      "clip_name": "umt5_xxl_fp16.safetensors",
+      "type": "wan",
+      "device": "cpu"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "加载CLIP"
+    }
+  },
+  "97": {
+    "inputs": {
+      "text": "鼓掌",
+      "嵌入提示词": null,
+      "clip": [
+        "85",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "正向"
+    }
+  },
+  "98": {
+    "inputs": {
+      "width": 832,
+      "height": 480,
+      "length": 17,
+      "batch_size": 1,
+      "positive": [
+        "97",
+        0
+      ],
+      "negative": [
+        "109",
+        0
+      ],
+      "vae": [
+        "51",
+        0
+      ],
+      "start_image": [
+        "209",
+        0
+      ]
+    },
+    "class_type": "WanImageToVideo",
+    "_meta": {
+      "title": "Wan图像到视频"
+    }
+  },
+  "109": {
+    "inputs": {
+      "conditioning": [
+        "97",
+        0
+      ]
+    },
+    "class_type": "ConditioningZeroOut",
+    "_meta": {
+      "title": "条件零化"
+    }
+  },
+  "113": {
+    "inputs": {
+      "seed": 1,
+      "steps": 6,
+      "cfg": 1,
+      "sampler_name": "euler",
+      "scheduler": "normal",
+      "denoise": 1,
+      "model": [
+        "69",
+        0
+      ],
+      "positive": [
+        "98",
+        0
+      ],
+      "negative": [
+        "98",
+        1
+      ],
+      "latent_image": [
+        "98",
+        2
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "K采样器"
+    }
+  },
+  "115": {
+    "inputs": {
+      "ckpt_name": "rife47.pth",
+      "clear_cache_after_n_frames": 8,
+      "multiplier": 2,
+      "fast_mode": true,
+      "ensemble": true,
+      "scale_factor": 1,
+      "frames": [
+        "116",
+        0
+      ]
+    },
+    "class_type": "RIFE VFI",
+    "_meta": {
+      "title": "RIFE VFI (recommend rife47 and rife49)"
+    }
+  },
+  "116": {
+    "inputs": {
+      "purge_cache": true,
+      "purge_models": true,
+      "anything": [
+        "30",
+        0
+      ]
+    },
+    "class_type": "LayerUtility: PurgeVRAM V2",
+    "_meta": {
+      "title": "图层工具：清除VRAM V2"
+    }
+  },
+  "117": {
+    "inputs": {
+      "frame_rate": 32,
+      "loop_count": 0,
+      "filename_prefix": "i2v/20260213182002/18202",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": false,
+      "trim_to_audio": true,
+      "pingpong": false,
+      "save_output": true,
+      "images": [
+        "115",
+        0
+      ]
+    },
+    "class_type": "VHS_VideoCombine",
+    "_meta": {
+      "title": "Video Combine 🎥🅥🅗🅢"
+    }
+  },
+  "122": {
+    "inputs": {
+      "indexes": "-1",
+      "images": [
+        "115",
+        0
+      ]
+    },
+    "class_type": "GetImagesFromBatchIndexed",
+    "_meta": {
+      "title": "从批次获取最后一张图像"
+    }
+  },
+  "171": {
+    "inputs": {
+      "filename_prefix": "i2v/20260213182002/18202",
+      "images": [
+        "122",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "保存图像"
+    }
+  },
+  "209": {
+    "inputs": {
+      "image_path_or_URL": "",
+      "image": ""
+    },
+    "class_type": "AILab_LoadImageSimple",
+    "_meta": {
+      "title": "加载图像 简单(RMBG) 🖼️"
+    }
+  }
+}
