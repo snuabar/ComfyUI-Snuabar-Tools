@@ -352,6 +352,7 @@ class AIImageServer:
 
     # 请求模型
     class QueueRequest(BaseModel):
+        client_id: str = Field(..., description="客户端ID", min_length=1, max_length=1000)
         workflow: str = Field(..., description="工作流", min_length=1, max_length=1000)
         model: str = Field(None, description="模型", min_length=0, max_length=1000)
         prompt: str = Field(..., description="图像描述提示词", min_length=0, max_length=1000)
@@ -407,8 +408,6 @@ class AIImageServer:
         async def _client(request: AIImageServer.ClientRequest):
             if request.client_id is not None:
                 self.client_id = request.client_id
-            else:
-                self.client_id = str(uuid.uuid4())
 
             return {
                 "client_id": self.client_id,
@@ -498,9 +497,13 @@ class AIImageServer:
         @self.app.post("/api/enqueue")
         async def enqueue(request: AIImageServer.QueueRequest):
             """ 提交并入列 """
+            if request.client_id is None or self.client_id != request.client_id:
+                raise HTTPException(status_code=http.client.FORBIDDEN, detail="无效的ID")
+
             _videos = () if request.videos is None else (_s for _s in request.videos)
             # 创建参数ID
             prompt_id = generate_prompt_id(
+                request.client_id,
                 request.workflow,
                 request.model,
                 request.prompt,
@@ -584,7 +587,7 @@ class AIImageServer:
             )
 
             # 通过 HTTP 提交任务
-            response = queue_prompt(prompt_json, self.client_id, prompt_id)
+            response = queue_prompt(prompt_json, request.client_id, prompt_id)
             if response is not None:
                 if response.code == 200:
                     self.running_request[prompt_id] = request
@@ -923,13 +926,15 @@ class AIImageServer:
             """
             获取服务器统计信息
             """
-            func = common_functions['get_today_output_directory']
-            output_dir = Path(func())
-            image_files = list(output_dir.glob("*.png"))
-            total_size = sum(f.stat().st_size for f in output_dir.rglob("*") if f.is_file())
+            output_dir = Path(folder_paths.get_output_directory())
+            extensions = ['png', 'jpg', 'jpeg', 'mp4']
+            files = []
+            for ext in extensions:
+                files.extend(output_dir.rglob(f"*.{ext}"))
+            total_size = sum(f.stat().st_size for f in files if f.is_file())
 
             return {
-                "total_images": len(image_files),
+                "total_files": len(files),
                 "storage_used_mb": total_size / (1024 * 1024),
                 "server_status": "running" if self.is_running else "stopped",
                 "uptime": self.get_uptime(),
