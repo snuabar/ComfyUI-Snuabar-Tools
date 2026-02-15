@@ -112,5 +112,15 @@
       "cfg": 1.0,
       "megapixels": 2
     }
+  },
+  "video_concat": {
+    "displayName": "视频合并",
+    "inputType": "file_list",
+    "outputType": "video",
+    "modelTypes": [],
+    "modelKeywords": [],
+    "excludeModelKeywords": [],
+    "defaultParameters": {},
+    "visible": false
   }
 }

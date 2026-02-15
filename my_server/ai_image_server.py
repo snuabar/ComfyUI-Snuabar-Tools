@@ -34,6 +34,29 @@ logger = logging.getLogger(__name__)
 server_address = "127.0.0.1:8188"
 
 
+def get_file_hash_map(directory):
+    hash_map = {}
+    hash_map_file = os.path.join(directory, 'hash_map.json')
+    if os.path.exists(hash_map_file) and os.path.isfile(hash_map_file):
+        with open(hash_map_file, 'r', encoding='utf-8') as f:
+            hash_map = json.loads(f.read())
+    return hash_map
+
+
+def save_file_hash_map(directory, hash_map):
+    # 清理无效的项
+    invalid_keys = []
+    for key in hash_map:
+        if not os.path.exists(key):
+            invalid_keys.append(key)
+    for key in invalid_keys:
+        del hash_map[key]
+
+    hash_map_file = os.path.join(directory, 'hash_map.json')
+    with open(hash_map_file, 'w', encoding='utf-8') as f:
+        f.write(json.dumps(hash_map))
+
+
 def calculate_file_hash(file_path, algorithm='md5'):
     """计算文件的哈希值"""
     hash_func = hashlib.md5() if algorithm == 'md5' else hashlib.sha256()
@@ -49,11 +72,7 @@ def calculate_file_hash(file_path, algorithm='md5'):
 def find_file_by_hash(directory, target_hash, algorithm='md5'):
     """在目录中查找指定哈希值的文件"""
 
-    hash_map = {}
-    hash_map_file = os.path.join(directory, 'hash_map.json')
-    if os.path.exists(hash_map_file) and os.path.isfile(hash_map_file):
-        with open(hash_map_file, 'r', encoding='utf-8') as f:
-            hash_map = json.loads(f.read())
+    hash_map = get_file_hash_map(directory)
 
     hash_map_changed = False
     found_file_path = None
@@ -78,18 +97,9 @@ def find_file_by_hash(directory, target_hash, algorithm='md5'):
         if found_file_path is not None:
             break
 
-    # 清理无效的项
-    invalid_keys = []
-    for key in hash_map:
-        if not os.path.exists(key):
-            invalid_keys.append(key)
-    for key in invalid_keys:
-        del hash_map[key]
-
     # 反映更新
     if hash_map_changed:
-        with open(hash_map_file, 'w', encoding='utf-8') as f:
-            f.write(json.dumps(hash_map))
+        save_file_hash_map(directory, hash_map)
 
     return found_file_path
 
@@ -255,13 +265,13 @@ def _get_job_status(job):
     return ''
 
 
-def _get_output_video_from_job(job):
+def _get_output_video_from_job(job, key='gifs'):
     output_videos = {}
     for node_id in job['outputs']:
         node_output = job['outputs'][node_id]
         videos = []
-        if 'gifs' in node_output:
-            for video in node_output['gifs']:
+        if key in node_output:
+            for video in node_output[key]:
                 videos.append(video)
         output_videos[node_id] = videos
     return output_videos
@@ -303,7 +313,6 @@ class AIImageServer:
         self.thread = None
         self.is_running = False
         self.client_id = str(uuid.uuid4())
-        self.prompt_id = None
         self.running_request: dict[str, AIImageServer.QueueRequest] = {}
 
         # 创建FastAPI应用
@@ -358,6 +367,7 @@ class AIImageServer:
         seconds: int = Field(0, description="视频时长（秒）")
         megapixels: float = Field(1.0, description="图像像素（百万）")
         images: Optional[list] = Field([None, None, None], description="图像名称")
+        videos: Optional[list] = Field(None, description="用于合并的视频ID列表")
 
     # 响应模型
     class ImageResponse(BaseModel):
@@ -372,6 +382,9 @@ class AIImageServer:
 
     class InterruptRequest(BaseModel):
         prompt_id: str = Field(None, description='ID')
+
+    class ClientRequest(BaseModel):
+        client_id: str = Field(None, description='客户端ID')
 
     def setup_routes(self):
         """设置API路由"""
@@ -388,6 +401,17 @@ class AIImageServer:
                     "local_ip": self.local_ip
                 },
                 "timestamp": datetime.now().isoformat()
+            }
+
+        @self.app.post("/api/client")
+        async def _client(request: AIImageServer.ClientRequest):
+            if request.client_id is not None:
+                self.client_id = request.client_id
+            else:
+                self.client_id = str(uuid.uuid4())
+
+            return {
+                "client_id": self.client_id,
             }
 
         @self.app.get("/api/workflows")
@@ -446,7 +470,6 @@ class AIImageServer:
                     "status": "success",
                     "message": "文件上传成功",
                     "filename": file.filename,
-                    "file_url": f"/uploads/{file.filename}",
                     "file_size": os.path.getsize(file_location),
                     "uploaded_at": datetime.now().isoformat()
                 })
@@ -456,21 +479,26 @@ class AIImageServer:
                     status_code=500
                 )
 
-        def find_last_frame(request: AIImageServer.QueueRequest):
-            if len(request.images) > 0 and request.images[0] is not None:
-                if request.images[0].startswith("prompt_id:"):
-                    _prompt_id = request.images[0][len("prompt_id:"):]
-                    _request_id = _get_request_id(_prompt_id)
-                    _found_file, _ = find_output_file(_request_id)
-                    if _found_file is not None:
-                        _file_path = _found_file[0]
-                        _last_frame_file = os.path.split(_file_path)[0] + "_[-1].png"
-                        if os.path.exists(_last_frame_file):
-                            request.images[0] = _last_frame_file
+        def find_last_frame(request_images: list[str]):
+            _len = len(request_images)
+            for i in range(_len):
+                _str = request_images[i]
+                if _str is not None:
+                    _last_frame_file = _str
+                    if _str.startswith("last_frame_of:"):
+                        _prompt_id = _str[len("last_frame_of:"):]
+                        _request_id = _get_request_id(_prompt_id)
+                        _found_file, _ = find_output_file(_request_id, _search_before=True)
+                        if _found_file is not None:
+                            _file_path = _found_file[0]
+                            _last_frame_file = os.path.splitext(str(_file_path))[0] + "_[-1].png"
+                            if os.path.exists(_last_frame_file):
+                                request_images[i] = _last_frame_file
 
         @self.app.post("/api/enqueue")
         async def enqueue(request: AIImageServer.QueueRequest):
             """ 提交并入列 """
+            _videos = () if request.videos is None else (_s for _s in request.videos)
             # 创建参数ID
             prompt_id = generate_prompt_id(
                 request.workflow,
@@ -484,9 +512,8 @@ class AIImageServer:
                 request.cfg,
                 request.seconds,
                 request.megapixels,
-                request.images[0],
-                request.images[1],
-                request.images[2],
+                *(_s for _s in request.images),
+                *_videos,
             )
             # 通过参数ID获取请求ID
             request_id = _get_request_id(prompt_id)
@@ -512,15 +539,13 @@ class AIImageServer:
                     "utc_timestamp": f"{_get_datetime_now_utc()}",
                 }
 
-            self.prompt_id = prompt_id
-
             # 准备提示词
             if len(wf.workflow_func_map) == 0:
                 wf.load_workflows()
             workflow_prompt_func = wf.workflow_func_map[request.workflow]
             if workflow_prompt_func is None:
                 return {
-                    "prompt_id": self.prompt_id,
+                    "prompt_id": prompt_id,
                     "code": http.client.NOT_FOUND,
                     "message": f"workflow {request.workflow} not found",
                     "parameters": request.model_dump(),
@@ -528,7 +553,18 @@ class AIImageServer:
                 }
 
             # 如果需要，尝试解析并找到指定prompt_id的最后一帧图像
-            find_last_frame(request)
+            find_last_frame(request.images)
+            # 视频合并时需要将ID转为文件路径
+            if request.videos is not None:
+                for i in range(len(request.videos)):
+                    _id = request.videos[i]
+                    _request_id = _get_request_id(_id)
+                    _files, is_video = find_output_file(_request_id, _search_before=True)
+                    if _files is None or len(_files) == 0:
+                        raise HTTPException(status_code=http.client.NOT_FOUND, detail=f"Some files are missing.")
+                    if not is_video:
+                        raise HTTPException(status_code=http.client.BAD_REQUEST, detail=f"{prompt_id} is not a video.")
+                    request.videos[i] = str(_files[0])
 
             prompt_json = workflow_prompt_func(
                 model=request.model,
@@ -544,6 +580,7 @@ class AIImageServer:
                 image1=request.images[0],
                 image2=request.images[1],
                 image3=request.images[2],
+                input_video_list=request.videos,
             )
 
             # 通过 HTTP 提交任务
@@ -553,7 +590,7 @@ class AIImageServer:
                     self.running_request[prompt_id] = request
                 # response_body = response.read()
                 return {
-                    "prompt_id": self.prompt_id,
+                    "prompt_id": prompt_id,
                     "code": response.code,
                     "message": response.msg,
                     "parameters": request.model_dump(),
@@ -561,7 +598,7 @@ class AIImageServer:
                 }
 
             return {
-                "prompt_id": self.prompt_id,
+                "prompt_id": prompt_id,
                 "code": http.client.INTERNAL_SERVER_ERROR,
                 "message": f"internal server error",
                 "parameters": request.model_dump(),
@@ -581,7 +618,7 @@ class AIImageServer:
                     "prompt_id": request.prompt_id,
                 }
 
-        def find_output_file(request_id: str, _path: str = None, _search_before = False):
+        def find_output_file(request_id: str, _path: str = None, _search_before=False):
             # 查找图像文件
             if _path is None:
                 func = common_functions['get_today_output_directory']
@@ -603,7 +640,7 @@ class AIImageServer:
                     before_func = common_functions['get_before_output_directory']
                     _path = before_func(days, make_dirs=False)
                     if os.path.exists(_path):
-                        found_files, _ = find_output_file(request_id, _path)
+                        found_files, is_video = find_output_file(request_id, _path)
                         if len(found_files) > 0:
                             break
                     days -= 1
@@ -632,9 +669,9 @@ class AIImageServer:
                 filename=file_name
             )
 
-        @self.app.get("/api/download/{prompt_id}/stream")
+        @self.app.get("/api/download/{file_id}/stream")
         async def streaming_download(
-                prompt_id: str,
+                file_id: str,
                 chunk_size: int = 8192,
                 buffer_size: int = 1024 * 1024,  # 1MB缓冲
                 enable_compression: bool = False
@@ -645,12 +682,20 @@ class AIImageServer:
             import time
 
             # 查找文件
-            request_id = _get_request_id(prompt_id)
-            output_files, is_video = find_output_file(request_id, _search_before=True)
-            if not output_files:
-                raise HTTPException(status_code=404, detail="文件未找到")
+            if file_id.startswith("last_frame_of:"):
+                _list = [file_id]
+                find_last_frame(_list)
+                output_file = Path(_list[0])
+                prompt_id = file_id[len("last_frame_of:"):]
+                request_id = _get_request_id(prompt_id)
+            else:
+                prompt_id = file_id
+                request_id = _get_request_id(prompt_id)
+                output_files, _ = find_output_file(request_id, _search_before=True)
+                if not output_files:
+                    raise HTTPException(status_code=404, detail="文件未找到")
 
-            output_file = output_files[0]
+                output_file = output_files[0]
 
             file_size = output_file.stat().st_size
             start_time = time.time()
@@ -766,16 +811,23 @@ class AIImageServer:
                     end_time = f"{job['execution_end_time']}"
                 filename = ''
                 filepath = ''
-                is_video = _request.seconds > 0
+                video_concat = _request.videos is not None
+                is_video = _request.seconds > 0 or video_concat
                 if is_video:
                     # videos, _ = await get_output_video_from_history(prompt_id, history=history[prompt_id])
-                    videos = _get_output_video_from_job(job)
+                    if video_concat:
+                        videos = _get_output_video_from_job(job, key='text')
+                    else:
+                        videos = _get_output_video_from_job(job)
                     if videos is not None and isinstance(videos, dict):
                         no = 0
                         for node_id in videos:
                             for video_data in videos[node_id]:
                                 # 转移视频
-                                ori_file = video_data['fullpath']
+                                if isinstance(video_data, str):
+                                    ori_file = video_data
+                                else:
+                                    ori_file = video_data['fullpath']
                                 filename_no_ext = f'{datetime.now().strftime("%Y%m%d_%H%M%S")}_{_request.seed}_{request_id}_{no:05d}'
                                 filename = f'{filename_no_ext}.mp4'
                                 func = common_functions['get_today_output_directory']

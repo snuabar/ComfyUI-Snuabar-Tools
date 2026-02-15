@@ -424,6 +424,26 @@ def i2i_qwen_image_edit_2509(**kwargs):
         return None
 
 
+def video_concat(**kwargs):
+    input_video_list = "input_video_list" in kwargs and kwargs['input_video_list']
+    try:
+        json_path = __get_prompt_file('video_concat')
+        with open(json_path, 'r', encoding='utf-8') as f:
+            workflow = json.loads(f.read())
+        if input_video_list is not None:
+            _input_video_list_str = ";".join(input_video_list)
+            __set_node_input(workflow, '2', 'path', _input_video_list_str)
+            __set_node_input(workflow, '2', 'input_path_type', "file_list")
+            __set_node_input(workflow, '2', 'output_path_type', "output")
+            __set_node_input(workflow, '2', 'sort_method', "creation_time")
+            __set_node_input(workflow, '2', 'sort_order', "ascending")
+            __set_node_input(workflow, '2', 'merge_method', "concat")
+        return workflow
+    except Exception as e:
+        print(f"t2i. e: {e}")
+        return None
+
+
 workflow_list: dict = {}
 workflow_func_map: dict = {}
 

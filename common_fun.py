@@ -32,6 +32,26 @@ ai_image_server.common_functions['get_today_output_directory'] = get_today_outpu
 ai_image_server.common_functions['get_before_output_directory'] = get_before_output_directory
 
 
+def combine_videos(
+        video_files: list[str],
+        output_file: str,
+        overwrite: bool = False,
+        sort_method="creation_time",
+        sort_order="ascending"):
+    video_files = VideoFileSorter().sort_videos(video_files, sort_method, sort_order)
+
+    if not os.path.exists(output_file) or overwrite:
+        if os.path.exists(output_file):
+            os.remove(output_file)
+
+    import video_tools
+    # 开始合并
+    video_tools.merge_videos_ffmpeg(video_files, output_file, method='concat')
+
+
+ai_image_server.common_functions['combine_videos'] = combine_videos
+
+
 class VideoFileSorter:
     """视频文件排序，支持多种排序方式"""
 

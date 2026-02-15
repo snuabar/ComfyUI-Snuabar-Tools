@@ -1,0 +1,31 @@
+{
+  "1": {
+    "inputs": {
+      "text": [
+        "2",
+        0
+      ]
+    },
+    "class_type": "ShowText|pysssss",
+    "_meta": {
+      "title": "Show Text 🐍"
+    }
+  },
+  "2": {
+    "inputs": {
+      "path": "",
+      "input_path_type": "file_list",
+      "pattern": "*.mp4",
+      "file_name": "combined.mp4",
+      "output_path_type": "output",
+      "overwrite": true,
+      "sort_method": "creation_time",
+      "sort_order": "ascending",
+      "merge_method": "concat"
+    },
+    "class_type": "snuabar.video.simple.combine.note",
+    "_meta": {
+      "title": "简易视频合并"
+    }
+  }
+}
