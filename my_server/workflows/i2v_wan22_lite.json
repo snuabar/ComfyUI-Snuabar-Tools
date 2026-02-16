@@ -41,7 +41,7 @@
   "30": {
     "inputs": {
       "samples": [
-        "216",
+        "113",
         0
       ],
       "vae": [
@@ -122,7 +122,7 @@
         0
       ],
       "negative": [
-        "218",
+        "211",
         0
       ],
       "vae": [
@@ -137,6 +137,36 @@
     "class_type": "WanImageToVideo",
     "_meta": {
       "title": "Wan图像到视频"
+    }
+  },
+  "113": {
+    "inputs": {
+      "seed": 214,
+      "steps": 6,
+      "cfg": 1,
+      "sampler_name": "euler",
+      "scheduler": "normal",
+      "denoise": 1,
+      "model": [
+        "69",
+        0
+      ],
+      "positive": [
+        "98",
+        0
+      ],
+      "negative": [
+        "98",
+        1
+      ],
+      "latent_image": [
+        "98",
+        2
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "K采样器"
     }
   },
   "115": {
@@ -175,7 +205,7 @@
     "inputs": {
       "frame_rate": 32,
       "loop_count": 0,
-      "filename_prefix": "i2v/20260216171019",
+      "filename_prefix": "i2v/20260216171035/171035",
       "format": "video/h264-mp4",
       "pix_fmt": "yuv420p",
       "crf": 19,
@@ -206,147 +236,9 @@
       "title": "从批次获取最后一张图像"
     }
   },
-  "209": {
+  "171": {
     "inputs": {
-      "image_path_or_URL": "",
-      "image": ""
-    },
-    "class_type": "AILab_LoadImageSimple",
-    "_meta": {
-      "title": "加载图像 简单(RMBG) 🖼️"
-    }
-  },
-  "210": {
-    "inputs": {
-      "unet_name": "Wan2.2_Remix_NSFW_i2v_14b_high_lighting_v2.0.safetensors",
-      "weight_dtype": "fp8_e4m3fn"
-    },
-    "class_type": "UNETLoader",
-    "_meta": {
-      "title": "UNet加载器"
-    }
-  },
-  "211": {
-    "inputs": {
-      "model": [
-        "210",
-        0
-      ]
-    },
-    "class_type": "wanBlockSwap",
-    "_meta": {
-      "title": "Wan2.1块交换"
-    }
-  },
-  "212": {
-    "inputs": {
-      "sage_attention": "auto",
-      "allow_compile": false,
-      "model": [
-        "211",
-        0
-      ]
-    },
-    "class_type": "PathchSageAttentionKJ",
-    "_meta": {
-      "title": "高噪声-Patch Sage Attention KJ"
-    }
-  },
-  "213": {
-    "inputs": {
-      "enable_fp16_accumulation": true,
-      "model": [
-        "212",
-        0
-      ]
-    },
-    "class_type": "ModelPatchTorchSettings",
-    "_meta": {
-      "title": "Model Patch Torch Settings"
-    }
-  },
-  "214": {
-    "inputs": {
-      "shift": 5.000000000000001,
-      "model": [
-        "213",
-        0
-      ]
-    },
-    "class_type": "ModelSamplingSD3",
-    "_meta": {
-      "title": "采样算法（SD3）"
-    }
-  },
-  "215": {
-    "inputs": {
-      "add_noise": "enable",
-      "noise_seed": 214,
-      "steps": 6,
-      "cfg": 1,
-      "sampler_name": "euler",
-      "scheduler": "normal",
-      "start_at_step": 0,
-      "end_at_step": 2,
-      "return_with_leftover_noise": "enable",
-      "model": [
-        "214",
-        0
-      ],
-      "positive": [
-        "98",
-        0
-      ],
-      "negative": [
-        "98",
-        1
-      ],
-      "latent_image": [
-        "98",
-        2
-      ]
-    },
-    "class_type": "KSamplerAdvanced",
-    "_meta": {
-      "title": "K采样器（高级）"
-    }
-  },
-  "216": {
-    "inputs": {
-      "add_noise": "disable",
-      "noise_seed": 214,
-      "steps": 6,
-      "cfg": 1,
-      "sampler_name": "euler",
-      "scheduler": "normal",
-      "start_at_step": 2,
-      "end_at_step": 10000,
-      "return_with_leftover_noise": "disable",
-      "model": [
-        "69",
-        0
-      ],
-      "positive": [
-        "98",
-        0
-      ],
-      "negative": [
-        "98",
-        1
-      ],
-      "latent_image": [
-        "215",
-        0
-      ]
-    },
-    "class_type": "KSamplerAdvanced",
-    "_meta": {
-      "title": "K采样器（高级）"
-    }
-  },
-  "217": {
-    "inputs": {
-      "filename_prefix": "i2v/20260216171019",
+      "filename_prefix": "i2v/20260216171035/171035",
       "images": [
         "122",
         0
@@ -357,7 +249,17 @@
       "title": "保存图像"
     }
   },
-  "218": {
+  "209": {
+    "inputs": {
+      "image_path_or_URL": "",
+      "image": ""
+    },
+    "class_type": "AILab_LoadImageSimple",
+    "_meta": {
+      "title": "加载图像 简单(RMBG) 🖼️"
+    }
+  },
+  "211": {
     "inputs": {
       "text": "色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走, censored, mosaic censoring, bar censor, pixelated, glowing, bloom, blurry, day, out of focus, low detail, bad anatomy, ugly, overexposed, underexposed, distorted face, extra limbs, cartoonish, 3d render artifacts, duplicate people, unnatural lighting, bad composition, missing shadows, low resolution, poorly textured, glitch, noise, grain, static, motionless, still frame, overall grayish, worst quality, low quality, JPEG compression artifacts, subtitles, stylized, artwork, painting, illustration, cluttered background, many people in background, three legs, walking backward, zoom out, zoom in, mouth speaking, moving mouth, talking, speaking, mute speaking, unnatural skin tone, discolored eyelid, red eyelids, red upper eyelids, no red eyeshadow, closed eyes, no wide-open innocent eyes, poorly drawn hands, extra fingers, fused fingers, poorly drawn face, deformed, disfigured, malformed limbs, thighs, fog, mist, voluminous eyelashes, blush,",
       "嵌入提示词": null,

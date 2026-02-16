@@ -58,6 +58,21 @@
       "height": 480
     }
   },
+  "i2v_wan22_lite": {
+    "displayName": "图生视频_lite(Wan2.2_NSFW)",
+    "inputType": "image",
+    "outputType": "video",
+    "modelTypes": [],
+    "modelKeywords": [],
+    "excludeModelKeywords": [],
+    "defaultParameters": {
+      "step": 6,
+      "cfg": 1.0,
+      "seconds": 5,
+      "width": 720,
+      "height": 480
+    }
+  },
   "t2v_wan22_lite": {
     "displayName": "文生视频_lite(Wan2.2_NSFW)",
     "inputType": "text",
