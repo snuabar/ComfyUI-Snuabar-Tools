@@ -99,7 +99,10 @@
   },
   "97": {
     "inputs": {
-      "text": "",
+      "text": [
+        "227",
+        0
+      ],
       "嵌入提示词": null,
       "clip": [
         "85",
@@ -113,8 +116,14 @@
   },
   "98": {
     "inputs": {
-      "width": 480,
-      "height": 720,
+      "width": [
+        "219",
+        1
+      ],
+      "height": [
+        "219",
+        2
+      ],
       "length": 81,
       "batch_size": 1,
       "positive": [
@@ -130,7 +139,7 @@
         0
       ],
       "start_image": [
-        "209",
+        "219",
         0
       ]
     },
@@ -175,7 +184,7 @@
     "inputs": {
       "frame_rate": 32,
       "loop_count": 0,
-      "filename_prefix": "i2v/20260216171019",
+      "filename_prefix": "i2v/20260219013458",
       "format": "video/h264-mp4",
       "pix_fmt": "yuv420p",
       "crf": 19,
@@ -346,7 +355,7 @@
   },
   "217": {
     "inputs": {
-      "filename_prefix": "i2v/20260216171019",
+      "filename_prefix": "i2v/20260219013458",
       "images": [
         "122",
         0
@@ -369,6 +378,129 @@
     "class_type": "CLIPTextEncode",
     "_meta": {
       "title": "CLIP文本编码"
+    }
+  },
+  "219": {
+    "inputs": {
+      "width": 512,
+      "height": 512,
+      "upscale_method": "lanczos",
+      "keep_proportion": "crop",
+      "pad_color": "0, 0, 0",
+      "crop_position": "center",
+      "divisible_by": 32,
+      "device": "cpu",
+      "image": [
+        "209",
+        0
+      ]
+    },
+    "class_type": "ImageResizeKJv2",
+    "_meta": {
+      "title": "Resize Image v2"
+    }
+  },
+  "221": {
+    "inputs": {
+      "purge_cache": true,
+      "purge_models": true,
+      "anything": [
+        "226",
+        0
+      ]
+    },
+    "class_type": "LayerUtility: PurgeVRAM V2",
+    "_meta": {
+      "title": "图层工具：清除VRAM V2"
+    }
+  },
+  "222": {
+    "inputs": {
+      "text": [
+        "227",
+        0
+      ]
+    },
+    "class_type": "ShowText|pysssss",
+    "_meta": {
+      "title": "Show Text 🐍"
+    }
+  },
+  "223": {
+    "inputs": {
+      "action": "append",
+      "tidy_tags": "yes",
+      "text_a": [
+        "224",
+        0
+      ],
+      "text_b": [
+        "225",
+        0
+      ],
+      "text_c": ""
+    },
+    "class_type": "StringFunction|pysssss",
+    "_meta": {
+      "title": "String Function 🐍"
+    }
+  },
+  "224": {
+    "inputs": {
+      "positive": "结合我加载的图片，给出接下来的提示词描述。要求动作连贯，剧情合理。并提供{}秒拆解，时长符合动作的逻辑，提示词要简洁,不要任何额外的解释词，仅输出提示词部分。\n\n光源类型 为日光、人工光、月光、实用光、火光、荧光、阴天光、混合光、晴天光等\n光线类型 可以描述为柔光、硬光、顶光、侧光、背光、底光、边缘光、剪影、低对比度、高对比度\n时间段 白天、夜晚、黄昏、日落、黎明、日出。\n景别 特写、近景、中景，中近景、中全景、全景、广角\n描述构图类型 中心构图、平衡构图、侧重构图、对称构图、短边构图\n镜头描述-镜头尺寸 中焦距、广角、长焦、望远、超广角-鱼眼\n镜头描述-镜头角度 过肩角度、高角度、低角度、倾斜角度、航拍、俯视角度\n镜头描述-镜头类型 单人镜头、双人镜头、三人镜头、群像镜头、定场镜头\n色调 暖色调、冷色调、高饱和度、低饱和度等。\n运动描述 跳舞、跑步、滑滑板、踢足球、网球、乒乓、滑雪、篮球、橄榄球、顶碗舞、侧手翻等。\n人物情绪 愤怒、恐惧、高兴、悲伤、惊讶。\n基础运镜 镜头推进、镜头拉远、镜头向右移动、镜头向左移动、 镜头上摇 高级运镜 手持镜头、复合运镜、跟随镜头、环绕运镜\n风格化-视觉风格 毛毡风格、3D卡通、像素风格、木偶动画、3D游戏、黏土风格、二次元、水彩画、黑白动画、油画风格 风格化-特效镜头 移轴摄影、延时拍摄\n人物身体衣着状态 已穿衣服、仅穿内衣内裤、仅穿内衣、仅穿内裤、赤裸全身\n",
+      "嵌入提示词": null
+    },
+    "class_type": "easy positive",
+    "_meta": {
+      "title": "推理提示词"
+    }
+  },
+  "225": {
+    "inputs": {
+      "positive": "",
+      "嵌入提示词": null
+    },
+    "class_type": "easy positive",
+    "_meta": {
+      "title": "主提示词"
+    }
+  },
+  "226": {
+    "inputs": {
+      "text": [
+        "223",
+        0
+      ],
+      "model": "Qwen3-VL-4B-Instruct",
+      "quantization": "none",
+      "keep_model_loaded": false,
+      "temperature": 0.7,
+      "max_new_tokens": 2048,
+      "min_pixels": 125440,
+      "max_pixels": 334768,
+      "seed": 390,
+      "attention": "eager",
+      "image": [
+        "209",
+        0
+      ]
+    },
+    "class_type": "Qwen3_VQA",
+    "_meta": {
+      "title": "Qwen3 VQA"
+    }
+  },
+  "227": {
+    "inputs": {
+      "delimiter": "",
+      "text_list": [
+        "221",
+        0
+      ]
+    },
+    "class_type": "Text List to Text",
+    "_meta": {
+      "title": "文本列表到文本"
     }
   }
 }

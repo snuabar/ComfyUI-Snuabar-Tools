@@ -16,6 +16,18 @@ class SDUpscaleAssistant(io.ComfyNode):
             display_name="SD放大助手 ",
             category="SnuabarTools",
             inputs=[
+                io.Image.Input(
+                    id='image',
+                    display_name='图像',
+                    optional=True,
+                    tooltip='指定后下方输入的长宽会被忽略'
+                ),
+                io.Float.Input(
+                    id='upscale_factor',
+                    display_name='放大系数',
+                    max=4.0,
+                    min=1.0,
+                ),
                 io.Int.Input(
                     id='width',
                     display_name='图像宽'
@@ -25,8 +37,10 @@ class SDUpscaleAssistant(io.ComfyNode):
                     display_name='图像高'
                 ),
                 io.Float.Input(
-                    id='upscale_factor',
-                    display_name='放大系数'
+                    id='tile_factor',
+                    display_name='分块因子',
+                    default=2.0,
+                    tooltip='越大越省内存，但太大效果会变差'
                 )
             ],
             outputs=[
@@ -54,15 +68,16 @@ class SDUpscaleAssistant(io.ComfyNode):
         )
 
     @classmethod
-    def execute(cls, width, height, upscale_factor) -> io.NodeOutput:
+    def execute(cls, image, upscale_factor, width, height, tile_factor) -> io.NodeOutput:
+        _, height, width, _ = image.shape
         default_mask_blur = 8
         default_tile_padding = 32
         mask_blur = default_mask_blur * upscale_factor
         tile_padding = default_tile_padding * upscale_factor
-        tile_width = (width * upscale_factor) // 2
-        tile_height = (height * upscale_factor) // 2
+        tile_width = (width * upscale_factor) // tile_factor
+        tile_height = (height * upscale_factor) // tile_factor
         return io.NodeOutput(upscale_factor, int(tile_width), int(tile_height), int(mask_blur), int(tile_padding))
 
-    @classmethod
-    def fingerprint_inputs(cls, width, height, upscale_factor) -> Any:
-        return f"{datetime.datetime.now()}"
+    # @classmethod
+    # def fingerprint_inputs(cls, upscale_factor, width, height, tile_factor) -> Any:
+    #     return f"{datetime.datetime.now()}"

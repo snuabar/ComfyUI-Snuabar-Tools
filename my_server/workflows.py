@@ -88,6 +88,12 @@ def __set_node_input(workflow, node, key, value):
         workflow[node]['inputs'][key] = value
 
 
+def __get_node_input(workflow, node, key):
+    if node in workflow and 'inputs' in workflow[node] and key in workflow[node]['inputs']:
+        return workflow[node]['inputs'][key]
+    return None
+
+
 def t2i(**kwargs):
     model = kwargs['model'] if 'model' in kwargs else None
     prompt_p = kwargs['prompt_p'] if 'prompt_p' in kwargs else ''
@@ -175,7 +181,7 @@ def t2i_wan22(**kwargs):
             __set_prompt_input(prompt, 'UltimateSDUpscale', 'tile_height', tile_height)
         return prompt
     except Exception as e:
-        print(f"t2i. e: {e}")
+        print(f"t2i_wan22. e: {e}")
         return None
 
 
@@ -211,7 +217,7 @@ def t2v_wan22(**kwargs):
             __set_prompt_input(prompt, 'WanMoeKSampler', 'cfg_low_noise', cfg)
         return prompt
     except Exception as e:
-        print(f"t2i. e: {e}")
+        print(f"t2v_wan22. e: {e}")
         return None
 
 
@@ -231,16 +237,20 @@ def i2v_wan22(**kwargs):
         with open(json_path, 'r', encoding='utf-8') as f:
             prompt = json.loads(f.read())
         if prompt_p is not None and prompt_p != "":
-            _x = __get_condition_x(prompt, 'positive', "WanImageToVideo")
-            __set_prompt_input(prompt, 'CLIPTextEncode', 'text', prompt_p, x=_x)
+            __set_node_input(prompt, '225', 'positive', prompt_p)
         if width > 5:
-            __set_prompt_input(prompt, 'WanImageToVideo', 'width', width)
+            __set_prompt_input(prompt, 'ImageResizeKJv2', 'width', width)
         if height > 5:
-            __set_prompt_input(prompt, 'WanImageToVideo', 'height', height)
+            __set_prompt_input(prompt, 'ImageResizeKJv2', 'height', height)
         if length > 1:
             __set_prompt_input(prompt, 'WanImageToVideo', 'length', length)
+            _val = __get_node_input(prompt, '224', 'positive')
+            if _val is not None:
+                _val = _val.replace('{}', f'{seconds}')
+                __set_node_input(prompt, '224', 'positive', _val)
         if seed != 0:
             __set_prompt_input(prompt, 'KSamplerAdvanced', 'noise_seed', seed)
+            __set_prompt_input(prompt, 'Qwen3_VQA', 'seed', seed)
         if step != 0:
             __set_prompt_input(prompt, 'KSamplerAdvanced', 'steps', step)
         if cfg != 0.0:
@@ -252,7 +262,7 @@ def i2v_wan22(**kwargs):
                 __set_prompt_input(prompt, 'AILab_LoadImageSimple', 'image', image1)
         return prompt
     except Exception as e:
-        print(f"t2i. e: {e}")
+        print(f"i2v_wan22. e: {e}")
         return None
 
 
@@ -272,16 +282,20 @@ def i2v_wan22_lite(**kwargs):
         with open(json_path, 'r', encoding='utf-8') as f:
             prompt = json.loads(f.read())
         if prompt_p is not None and prompt_p != "":
-            _x = __get_condition_x(prompt, 'positive', "WanImageToVideo")
-            __set_prompt_input(prompt, 'CLIPTextEncode', 'text', prompt_p, x=_x)
+            __set_node_input(prompt, '234', 'positive', prompt_p)
         if width > 5:
-            __set_prompt_input(prompt, 'WanImageToVideo', 'width', width)
+            __set_prompt_input(prompt, 'ImageResizeKJv2', 'width', width)
         if height > 5:
-            __set_prompt_input(prompt, 'WanImageToVideo', 'height', height)
+            __set_prompt_input(prompt, 'ImageResizeKJv2', 'height', height)
         if length > 1:
             __set_prompt_input(prompt, 'WanImageToVideo', 'length', length)
+            _val = __get_node_input(prompt, '233', 'positive')
+            if _val is not None:
+                _val = _val.replace('{}', f'{seconds}')
+                __set_node_input(prompt, '233', 'positive', _val)
         if seed != 0:
             __set_prompt_input(prompt, 'KSampler', 'seed', seed)
+            __set_prompt_input(prompt, 'Qwen3_VQA', 'seed', seed)
         if step != 0:
             __set_prompt_input(prompt, 'KSampler', 'steps', step)
         if cfg != 0.0:
@@ -293,7 +307,7 @@ def i2v_wan22_lite(**kwargs):
                 __set_prompt_input(prompt, 'AILab_LoadImageSimple', 'image', image1)
         return prompt
     except Exception as e:
-        print(f"t2i. e: {e}")
+        print(f"i2v_wan22_lite. e: {e}")
         return None
 
 
@@ -328,7 +342,7 @@ def t2v_wan22_lite(**kwargs):
             __set_prompt_input(prompt, 'KSampler', 'cfg', cfg)
         return prompt
     except Exception as e:
-        print(f"t2i. e: {e}")
+        print(f"t2v_wan22_lite. e: {e}")
         return None
 
 
@@ -371,7 +385,7 @@ def t2i_SDXL_turbo(**kwargs):
             __set_prompt_input(prompt, 'UltimateSDUpscale', 'tile_height', tile_height)
         return prompt
     except Exception as e:
-        print(f"t2i. e: {e}")
+        print(f"t2i_SDXL_turbo. e: {e}")
         return None
 
 
@@ -416,7 +430,7 @@ def i2i_qwen_image_edit_2509_CR(**kwargs):
             __set_prompt_input(workflow, 'ImageScaleToTotalPixels', 'megapixels', megapixels)
         return workflow
     except Exception as e:
-        print(f"t2i. e: {e}")
+        print(f"i2i_qwen_image_edit_2509_CR. e: {e}")
         return None
 
 
@@ -461,7 +475,7 @@ def i2i_qwen_image_edit_2509(**kwargs):
             __set_prompt_input(workflow, 'ImageScaleToTotalPixels', 'megapixels', megapixels)
         return workflow
     except Exception as e:
-        print(f"t2i. e: {e}")
+        print(f"i2i_qwen_image_edit_2509. e: {e}")
         return None
 
 
@@ -481,7 +495,7 @@ def video_concat(**kwargs):
             __set_node_input(workflow, '2', 'merge_method', "concat")
         return workflow
     except Exception as e:
-        print(f"t2i. e: {e}")
+        print(f"video_concat. e: {e}")
         return None
 
 

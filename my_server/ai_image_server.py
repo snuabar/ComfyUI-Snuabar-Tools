@@ -902,7 +902,10 @@ class AIImageServer:
                 end_time = f"{_get_datetime_now_utc()}"
                 error_msg = f"unknown failure."
                 if 'execution_error' in job:
-                    error_msg = job['execution_error']
+                    if isinstance(job['execution_error'], dict) and 'exception_message' in job['execution_error']:
+                        error_msg = job['execution_error']['exception_message']
+                    else:
+                        error_msg = job['execution_error']
                 if 'execution_end_time' in job:
                     end_time = f"{job['execution_end_time']}"
                 return {
