@@ -107,7 +107,7 @@
     "inputType": "image",
     "outputType": "image",
     "modelTypes": ["unet"],
-    "modelKeywords": ["-qwen-image-edit-2509-lightning"],
+    "modelKeywords": ["-qwen-image-edit-2509-lightning", "qwen_image_edit"],
     "excludeModelKeywords": ["-fp4"],
     "defaultParameters": {
       "step": 4,
@@ -120,7 +120,7 @@
     "inputType": "image",
     "outputType": "image",
     "modelTypes": ["unet"],
-    "modelKeywords": ["-qwen-image-edit-2509-lightning"],
+    "modelKeywords": ["-qwen-image-edit-2509-lightning", "qwen_image_edit"],
     "excludeModelKeywords": ["-fp4"],
     "defaultParameters": {
       "step": 4,
