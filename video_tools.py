@@ -150,7 +150,7 @@ class SimpleMergeVideosNode(io.ComfyNode):
                 io.Combo.Input(
                     id='input_path_type',
                     display_name='文件夹类型',
-                    options=['output', 'custom'],
+                    options=['output', 'custom', 'file_list'],
                     default='output',
                 ),
                 io.String.Input(
@@ -166,7 +166,7 @@ class SimpleMergeVideosNode(io.ComfyNode):
                 io.Combo.Input(
                     id='output_path_type',
                     display_name='输出路径类型',
-                    options=['same', 'output'],
+                    options=['same', 'output', 'custom'],
                     default='same',
                 ),
                 io.Boolean.Input(
@@ -205,23 +205,30 @@ class SimpleMergeVideosNode(io.ComfyNode):
     def execute(cls, path, input_path_type, pattern, file_name, output_path_type, overwrite,
                 sort_order, sort_method, merge_method) -> io.NodeOutput:
         # 在ComfyUI节点的代码中添加
+        is_list = input_path_type.lower() == 'file_list'
         comfy_out_dir = common_fun.get_output_directory()
         if input_path_type.lower() == 'output':
             directory_path = os.path.join(comfy_out_dir, path)
         else:
             directory_path = path
-        directory_path = os.path.normpath(os.path.abspath(directory_path))
-
-        # Verify inputs
-        if not os.path.exists(directory_path):
-            raise ValueError(f"Directory {directory_path} does not exist")
 
         file_pattern = pattern
         output_filename = file_name
-        # Get video files
-        video_files = list(Path(directory_path).glob(file_pattern))
-        if not video_files:
-            raise ValueError(f"No video files matching {file_pattern} found in {directory_path}")
+
+        if is_list:
+            video_files = directory_path.split(';')
+            video_files = [f for f in video_files if os.path.exists(f) and os.path.isfile(f)]
+        else:
+            directory_path = os.path.normpath(os.path.abspath(directory_path))
+
+            # Verify inputs
+            if not os.path.exists(directory_path):
+                raise ValueError(f"Directory {directory_path} does not exist")
+
+            # Get video files
+            video_files = list(Path(directory_path).glob(file_pattern))
+            if not video_files:
+                raise ValueError(f"No video files matching {file_pattern} found in {directory_path}")
 
         if sort_method.lower() != 'none':
             video_files = common_fun.VideoFileSorter().sort_videos(video_files, sort_method, sort_order)
@@ -229,8 +236,10 @@ class SimpleMergeVideosNode(io.ComfyNode):
         if output_path_type == 'same':
             # Set output path
             output_path = os.path.join(directory_path, output_filename)
-        else:
+        elif output_path_type == 'output':
             output_path = os.path.join(comfy_out_dir, output_filename)
+        else:
+            output_path = output_filename
 
         if not os.path.exists(output_path) or overwrite:
             if os.path.exists(output_path):

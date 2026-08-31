@@ -88,6 +88,12 @@ def __set_node_input(workflow, node, key, value):
         workflow[node]['inputs'][key] = value
 
 
+def __get_node_input(workflow, node, key):
+    if node in workflow and 'inputs' in workflow[node] and key in workflow[node]['inputs']:
+        return workflow[node]['inputs'][key]
+    return None
+
+
 def t2i(**kwargs):
     model = kwargs['model'] if 'model' in kwargs else None
     prompt_p = kwargs['prompt_p'] if 'prompt_p' in kwargs else ''
@@ -175,7 +181,7 @@ def t2i_wan22(**kwargs):
             __set_prompt_input(prompt, 'UltimateSDUpscale', 'tile_height', tile_height)
         return prompt
     except Exception as e:
-        print(f"t2i. e: {e}")
+        print(f"t2i_wan22. e: {e}")
         return None
 
 
@@ -211,7 +217,97 @@ def t2v_wan22(**kwargs):
             __set_prompt_input(prompt, 'WanMoeKSampler', 'cfg_low_noise', cfg)
         return prompt
     except Exception as e:
-        print(f"t2i. e: {e}")
+        print(f"t2v_wan22. e: {e}")
+        return None
+
+
+def i2v_wan22(**kwargs):
+    prompt_p = kwargs['prompt_p'] if 'prompt_p' in kwargs else ''
+    prompt_n = kwargs['prompt_n'] if 'prompt_n' in kwargs else ''
+    image1 = kwargs['image1'] if 'image1' in kwargs else None
+    width = kwargs['width'] if 'width' in kwargs else 512
+    height = kwargs['height'] if 'height' in kwargs else 512
+    seed = kwargs['seed'] if 'seed' in kwargs else 0
+    step = kwargs['step'] if 'step' in kwargs else 10
+    cfg = kwargs['cfg'] if 'cfg' in kwargs else 1.0
+    seconds = kwargs['seconds'] if 'seconds' in kwargs else 1
+    length = 16 * seconds + 1
+    try:
+        json_path = __get_prompt_file('i2v_wan22')
+        with open(json_path, 'r', encoding='utf-8') as f:
+            prompt = json.loads(f.read())
+        if prompt_p is not None and prompt_p != "":
+            __set_node_input(prompt, '225', 'positive', prompt_p)
+        if width > 5:
+            __set_prompt_input(prompt, 'ImageResizeKJv2', 'width', width)
+        if height > 5:
+            __set_prompt_input(prompt, 'ImageResizeKJv2', 'height', height)
+        if length > 1:
+            __set_prompt_input(prompt, 'WanImageToVideo', 'length', length)
+            _val = __get_node_input(prompt, '224', 'positive')
+            if _val is not None:
+                _val = _val.replace('{}', f'{seconds}')
+                __set_node_input(prompt, '224', 'positive', _val)
+        if seed != 0:
+            __set_prompt_input(prompt, 'KSamplerAdvanced', 'noise_seed', seed)
+            __set_prompt_input(prompt, 'Qwen3_VQA', 'seed', seed)
+        if step != 0:
+            __set_prompt_input(prompt, 'KSamplerAdvanced', 'steps', step)
+        if cfg != 0.0:
+            __set_prompt_input(prompt, 'KSamplerAdvanced', 'cfg', cfg)
+        if image1 is not None:
+            if os.path.exists(image1) and os.path.isfile(image1):  # 如果是文件路径
+                __set_prompt_input(prompt, 'AILab_LoadImageSimple', 'image_path_or_URL', image1)
+            else:  # 如何是文件名
+                __set_prompt_input(prompt, 'AILab_LoadImageSimple', 'image', image1)
+        return prompt
+    except Exception as e:
+        print(f"i2v_wan22. e: {e}")
+        return None
+
+
+def i2v_wan22_lite(**kwargs):
+    prompt_p = kwargs['prompt_p'] if 'prompt_p' in kwargs else ''
+    prompt_n = kwargs['prompt_n'] if 'prompt_n' in kwargs else ''
+    image1 = kwargs['image1'] if 'image1' in kwargs else None
+    width = kwargs['width'] if 'width' in kwargs else 512
+    height = kwargs['height'] if 'height' in kwargs else 512
+    seed = kwargs['seed'] if 'seed' in kwargs else 0
+    step = kwargs['step'] if 'step' in kwargs else 10
+    cfg = kwargs['cfg'] if 'cfg' in kwargs else 1.0
+    seconds = kwargs['seconds'] if 'seconds' in kwargs else 1
+    length = 16 * seconds + 1
+    try:
+        json_path = __get_prompt_file('i2v_wan22_lite')
+        with open(json_path, 'r', encoding='utf-8') as f:
+            prompt = json.loads(f.read())
+        if prompt_p is not None and prompt_p != "":
+            __set_node_input(prompt, '234', 'positive', prompt_p)
+        if width > 5:
+            __set_prompt_input(prompt, 'ImageResizeKJv2', 'width', width)
+        if height > 5:
+            __set_prompt_input(prompt, 'ImageResizeKJv2', 'height', height)
+        if length > 1:
+            __set_prompt_input(prompt, 'WanImageToVideo', 'length', length)
+            _val = __get_node_input(prompt, '233', 'positive')
+            if _val is not None:
+                _val = _val.replace('{}', f'{seconds}')
+                __set_node_input(prompt, '233', 'positive', _val)
+        if seed != 0:
+            __set_prompt_input(prompt, 'KSampler', 'seed', seed)
+            __set_prompt_input(prompt, 'Qwen3_VQA', 'seed', seed)
+        if step != 0:
+            __set_prompt_input(prompt, 'KSampler', 'steps', step)
+        if cfg != 0.0:
+            __set_prompt_input(prompt, 'KSampler', 'cfg', cfg)
+        if image1 is not None:
+            if os.path.exists(image1) and os.path.isfile(image1):  # 如果是文件路径
+                __set_prompt_input(prompt, 'AILab_LoadImageSimple', 'image_path_or_URL', image1)
+            else:  # 如何是文件名
+                __set_prompt_input(prompt, 'AILab_LoadImageSimple', 'image', image1)
+        return prompt
+    except Exception as e:
+        print(f"i2v_wan22_lite. e: {e}")
         return None
 
 
@@ -246,7 +342,7 @@ def t2v_wan22_lite(**kwargs):
             __set_prompt_input(prompt, 'KSampler', 'cfg', cfg)
         return prompt
     except Exception as e:
-        print(f"t2i. e: {e}")
+        print(f"t2v_wan22_lite. e: {e}")
         return None
 
 
@@ -289,11 +385,11 @@ def t2i_SDXL_turbo(**kwargs):
             __set_prompt_input(prompt, 'UltimateSDUpscale', 'tile_height', tile_height)
         return prompt
     except Exception as e:
-        print(f"t2i. e: {e}")
+        print(f"t2i_SDXL_turbo. e: {e}")
         return None
 
 
-def i2i_qwen_image_edit_2509(**kwargs):
+def i2i_qwen_image_edit_2509_CR(**kwargs):
     model = kwargs['model'] if 'model' in kwargs else None
     prompt_p = kwargs['prompt_p'] if 'prompt_p' in kwargs else ''
     image1 = kwargs['image1'] if 'image1' in kwargs else None
@@ -304,10 +400,10 @@ def i2i_qwen_image_edit_2509(**kwargs):
     cfg = kwargs['cfg'] if 'cfg' in kwargs else 1.0
     megapixels = kwargs['megapixels'] if 'megapixels' in kwargs else 1.0
     try:
-        json_path = __get_prompt_file('i2i_qwen_image_edit_2509')
+        json_path = __get_prompt_file('i2i_qwen_image_edit_2509_CR')
         with open(json_path, 'r', encoding='utf-8') as f:
             workflow = json.loads(f.read())
-        if model is not None:
+        if model is not None and model != "":
             __set_prompt_input(workflow, 'NunchakuQwenImageDiTLoader', 'model_name', model)
         if prompt_p is not None and prompt_p != "":
             _x = __get_condition_x(workflow, 'positive', key='prompt')
@@ -334,7 +430,72 @@ def i2i_qwen_image_edit_2509(**kwargs):
             __set_prompt_input(workflow, 'ImageScaleToTotalPixels', 'megapixels', megapixels)
         return workflow
     except Exception as e:
-        print(f"t2i. e: {e}")
+        print(f"i2i_qwen_image_edit_2509_CR. e: {e}")
+        return None
+
+
+def i2i_qwen_image_edit_2509(**kwargs):
+    model = kwargs['model'] if 'model' in kwargs else None
+    prompt_p = kwargs['prompt_p'] if 'prompt_p' in kwargs else ''
+    image1 = kwargs['image1'] if 'image1' in kwargs else None
+    image2 = kwargs['image2'] if 'image2' in kwargs else None
+    image3 = kwargs['image3'] if 'image3' in kwargs else None
+    seed = kwargs['seed'] if 'seed' in kwargs else 0
+    step = kwargs['step'] if 'step' in kwargs else 4
+    cfg = kwargs['cfg'] if 'cfg' in kwargs else 1.0
+    megapixels = kwargs['megapixels'] if 'megapixels' in kwargs else 1.0
+    try:
+        json_path = __get_prompt_file('i2i_qwen_image_edit_2509')
+        with open(json_path, 'r', encoding='utf-8') as f:
+            workflow = json.loads(f.read())
+        if model is not None and model != "":
+            __set_prompt_input(workflow, 'NunchakuQwenImageDiTLoader', 'model_name', model)
+        if prompt_p is not None and prompt_p != "":
+            _x = __get_condition_x(workflow, 'positive', key='prompt')
+            __set_prompt_input(workflow, 'TextEncodeQwenImageEditPlus', 'prompt', prompt_p, x=_x)
+        if image1 is None:
+            __remove_prompt_input(workflow, 'TextEncodeQwenImageEditPlus', 'image1')
+        else:
+            __set_node_input(workflow, '78', 'image', image1)
+        if image2 is None:
+            __remove_prompt_input(workflow, 'TextEncodeQwenImageEditPlus', 'image2')
+        else:
+            __set_node_input(workflow, '123', 'image', image2)
+        if image3 is None:
+            __remove_prompt_input(workflow, 'TextEncodeQwenImageEditPlus', 'image3')
+        else:
+            __set_node_input(workflow, '108', 'image', image3)
+        if seed != 0:
+            __set_prompt_input(workflow, 'KSampler', 'seed', seed)
+        if step != 0:
+            __set_prompt_input(workflow, 'KSampler', 'steps', step)
+        if cfg != 0.0:
+            __set_prompt_input(workflow, 'KSampler', 'cfg', cfg)
+        if megapixels > 1.0:
+            __set_prompt_input(workflow, 'ImageScaleToTotalPixels', 'megapixels', megapixels)
+        return workflow
+    except Exception as e:
+        print(f"i2i_qwen_image_edit_2509. e: {e}")
+        return None
+
+
+def video_concat(**kwargs):
+    input_video_list = "input_video_list" in kwargs and kwargs['input_video_list']
+    try:
+        json_path = __get_prompt_file('video_concat')
+        with open(json_path, 'r', encoding='utf-8') as f:
+            workflow = json.loads(f.read())
+        if input_video_list is not None:
+            _input_video_list_str = ";".join(input_video_list)
+            __set_node_input(workflow, '2', 'path', _input_video_list_str)
+            __set_node_input(workflow, '2', 'input_path_type', "file_list")
+            __set_node_input(workflow, '2', 'output_path_type', "output")
+            __set_node_input(workflow, '2', 'sort_method', "creation_time")
+            __set_node_input(workflow, '2', 'sort_order', "ascending")
+            __set_node_input(workflow, '2', 'merge_method', "concat")
+        return workflow
+    except Exception as e:
+        print(f"video_concat. e: {e}")
         return None
 
 

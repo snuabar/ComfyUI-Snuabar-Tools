@@ -1,8 +1,8 @@
 import datetime
 import os
 
-
 import my_server.ai_image_server as ai_image_server
+
 
 def get_output_directory():
     try:
@@ -11,6 +11,7 @@ def get_output_directory():
     except ImportError:
         return os.getcwd()
 
+
 def get_today_output_directory():
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d")
     directory = os.path.join(get_output_directory(), timestamp)
@@ -18,7 +19,38 @@ def get_today_output_directory():
         os.makedirs(directory)
     return directory
 
+
+def get_before_output_directory(days, make_dirs = True):
+    timestamp = (datetime.datetime.now() - datetime.timedelta(days=days)).strftime("%Y-%m-%d")
+    directory = os.path.join(get_output_directory(), timestamp)
+    if not os.path.exists(directory) and make_dirs:
+        os.makedirs(directory)
+    return directory
+
+
 ai_image_server.common_functions['get_today_output_directory'] = get_today_output_directory
+ai_image_server.common_functions['get_before_output_directory'] = get_before_output_directory
+
+
+def combine_videos(
+        video_files: list[str],
+        output_file: str,
+        overwrite: bool = False,
+        sort_method="creation_time",
+        sort_order="ascending"):
+    video_files = VideoFileSorter().sort_videos(video_files, sort_method, sort_order)
+
+    if not os.path.exists(output_file) or overwrite:
+        if os.path.exists(output_file):
+            os.remove(output_file)
+
+    import video_tools
+    # 开始合并
+    video_tools.merge_videos_ffmpeg(video_files, output_file, method='concat')
+
+
+ai_image_server.common_functions['combine_videos'] = combine_videos
+
 
 class VideoFileSorter:
     """视频文件排序，支持多种排序方式"""
@@ -95,4 +127,3 @@ class VideoFileSorter:
         else:
             # 默认使用自然排序
             return cls.sort_natural(video_files, reverse)
-

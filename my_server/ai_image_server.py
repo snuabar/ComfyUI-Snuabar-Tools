@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, List
 
+import aiofiles
 import uvicorn
 from fastapi import FastAPI, HTTPException, Form, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
@@ -33,6 +34,29 @@ logger = logging.getLogger(__name__)
 server_address = "127.0.0.1:8188"
 
 
+def get_file_hash_map(directory):
+    hash_map = {}
+    hash_map_file = os.path.join(directory, 'hash_map.json')
+    if os.path.exists(hash_map_file) and os.path.isfile(hash_map_file):
+        with open(hash_map_file, 'r', encoding='utf-8') as f:
+            hash_map = json.loads(f.read())
+    return hash_map
+
+
+def save_file_hash_map(directory, hash_map):
+    # 清理无效的项
+    invalid_keys = []
+    for key in hash_map:
+        if not os.path.exists(key):
+            invalid_keys.append(key)
+    for key in invalid_keys:
+        del hash_map[key]
+
+    hash_map_file = os.path.join(directory, 'hash_map.json')
+    with open(hash_map_file, 'w', encoding='utf-8') as f:
+        f.write(json.dumps(hash_map))
+
+
 def calculate_file_hash(file_path, algorithm='md5'):
     """计算文件的哈希值"""
     hash_func = hashlib.md5() if algorithm == 'md5' else hashlib.sha256()
@@ -48,11 +72,7 @@ def calculate_file_hash(file_path, algorithm='md5'):
 def find_file_by_hash(directory, target_hash, algorithm='md5'):
     """在目录中查找指定哈希值的文件"""
 
-    hash_map = {}
-    hash_map_file = os.path.join(directory, 'hash_map.json')
-    if os.path.exists(hash_map_file) and os.path.isfile(hash_map_file):
-        with open(hash_map_file, 'r', encoding='utf-8') as f:
-            hash_map = json.loads(f.read())
+    hash_map = get_file_hash_map(directory)
 
     hash_map_changed = False
     found_file_path = None
@@ -77,18 +97,9 @@ def find_file_by_hash(directory, target_hash, algorithm='md5'):
         if found_file_path is not None:
             break
 
-    # 清理无效的项
-    invalid_keys = []
-    for key in hash_map:
-        if not os.path.exists(key):
-            invalid_keys.append(key)
-    for key in invalid_keys:
-        del hash_map[key]
-
     # 反映更新
     if hash_map_changed:
-        with open(hash_map_file, 'w', encoding='utf-8') as f:
-            f.write(json.dumps(hash_map))
+        save_file_hash_map(directory, hash_map)
 
     return found_file_path
 
@@ -254,13 +265,13 @@ def _get_job_status(job):
     return ''
 
 
-def _get_output_video_from_job(job):
+def _get_output_video_from_job(job, key='gifs'):
     output_videos = {}
     for node_id in job['outputs']:
         node_output = job['outputs'][node_id]
         videos = []
-        if 'gifs' in node_output:
-            for video in node_output['gifs']:
+        if key in node_output:
+            for video in node_output[key]:
                 videos.append(video)
         output_videos[node_id] = videos
     return output_videos
@@ -302,7 +313,6 @@ class AIImageServer:
         self.thread = None
         self.is_running = False
         self.client_id = str(uuid.uuid4())
-        self.prompt_id = None
         self.running_request: dict[str, AIImageServer.QueueRequest] = {}
 
         # 创建FastAPI应用
@@ -342,9 +352,10 @@ class AIImageServer:
 
     # 请求模型
     class QueueRequest(BaseModel):
+        client_id: str = Field(..., description="客户端ID", min_length=1, max_length=1000)
         workflow: str = Field(..., description="工作流", min_length=1, max_length=1000)
-        model: str = Field(None, description="模型", min_length=1, max_length=1000)
-        prompt: str = Field(..., description="图像描述提示词", min_length=1, max_length=1000)
+        model: str = Field(None, description="模型", min_length=0, max_length=1000)
+        prompt: str = Field(..., description="图像描述提示词", min_length=0, max_length=1000)
         seed: int = Field(0, description="随机种子")
         img_width: int = Field(512, description="图像宽度", ge=64, le=4096)
         img_height: int = Field(512, description="图像高度", ge=64, le=4096)
@@ -357,6 +368,7 @@ class AIImageServer:
         seconds: int = Field(0, description="视频时长（秒）")
         megapixels: float = Field(1.0, description="图像像素（百万）")
         images: Optional[list] = Field([None, None, None], description="图像名称")
+        videos: Optional[list] = Field(None, description="用于合并的视频ID列表")
 
     # 响应模型
     class ImageResponse(BaseModel):
@@ -371,6 +383,9 @@ class AIImageServer:
 
     class InterruptRequest(BaseModel):
         prompt_id: str = Field(None, description='ID')
+
+    class ClientRequest(BaseModel):
+        client_id: str = Field(None, description='客户端ID')
 
     def setup_routes(self):
         """设置API路由"""
@@ -387,6 +402,15 @@ class AIImageServer:
                     "local_ip": self.local_ip
                 },
                 "timestamp": datetime.now().isoformat()
+            }
+
+        @self.app.post("/api/client")
+        async def _client(request: AIImageServer.ClientRequest):
+            if request.client_id is not None:
+                self.client_id = request.client_id
+
+            return {
+                "client_id": self.client_id,
             }
 
         @self.app.get("/api/workflows")
@@ -445,7 +469,6 @@ class AIImageServer:
                     "status": "success",
                     "message": "文件上传成功",
                     "filename": file.filename,
-                    "file_url": f"/uploads/{file.filename}",
                     "file_size": os.path.getsize(file_location),
                     "uploaded_at": datetime.now().isoformat()
                 })
@@ -455,11 +478,32 @@ class AIImageServer:
                     status_code=500
                 )
 
+        def find_last_frame(request_images: list[str]):
+            _len = len(request_images)
+            for i in range(_len):
+                _str = request_images[i]
+                if _str is not None:
+                    _last_frame_file = _str
+                    if _str.startswith("last_frame_of:"):
+                        _prompt_id = _str[len("last_frame_of:"):]
+                        _request_id = _get_request_id(_prompt_id)
+                        _found_file, _ = find_output_file(_request_id, _search_before=True)
+                        if _found_file is not None:
+                            _file_path = _found_file[0]
+                            _last_frame_file = os.path.splitext(str(_file_path))[0] + "_[-1].png"
+                            if os.path.exists(_last_frame_file):
+                                request_images[i] = _last_frame_file
+
         @self.app.post("/api/enqueue")
         async def enqueue(request: AIImageServer.QueueRequest):
             """ 提交并入列 """
+            if request.client_id is None or self.client_id != request.client_id:
+                raise HTTPException(status_code=http.client.FORBIDDEN, detail="无效的ID")
+
+            _videos = () if request.videos is None else (_s for _s in request.videos)
             # 创建参数ID
             prompt_id = generate_prompt_id(
+                request.client_id,
                 request.workflow,
                 request.model,
                 request.prompt,
@@ -471,9 +515,8 @@ class AIImageServer:
                 request.cfg,
                 request.seconds,
                 request.megapixels,
-                request.images[0],
-                request.images[1],
-                request.images[2],
+                *(_s for _s in request.images),
+                *_videos,
             )
             # 通过参数ID获取请求ID
             request_id = _get_request_id(prompt_id)
@@ -499,20 +542,32 @@ class AIImageServer:
                     "utc_timestamp": f"{_get_datetime_now_utc()}",
                 }
 
-            self.prompt_id = prompt_id
-
             # 准备提示词
             if len(wf.workflow_func_map) == 0:
                 wf.load_workflows()
             workflow_prompt_func = wf.workflow_func_map[request.workflow]
             if workflow_prompt_func is None:
                 return {
-                    "prompt_id": self.prompt_id,
+                    "prompt_id": prompt_id,
                     "code": http.client.NOT_FOUND,
                     "message": f"workflow {request.workflow} not found",
                     "parameters": request.model_dump(),
                     "utc_timestamp": f"{_get_datetime_now_utc()}",
                 }
+
+            # 如果需要，尝试解析并找到指定prompt_id的最后一帧图像
+            find_last_frame(request.images)
+            # 视频合并时需要将ID转为文件路径
+            if request.videos is not None:
+                for i in range(len(request.videos)):
+                    _id = request.videos[i]
+                    _request_id = _get_request_id(_id)
+                    _files, is_video = find_output_file(_request_id, _search_before=True)
+                    if _files is None or len(_files) == 0:
+                        raise HTTPException(status_code=http.client.NOT_FOUND, detail=f"Some files are missing.")
+                    if not is_video:
+                        raise HTTPException(status_code=http.client.BAD_REQUEST, detail=f"{prompt_id} is not a video.")
+                    request.videos[i] = str(_files[0])
 
             prompt_json = workflow_prompt_func(
                 model=request.model,
@@ -528,16 +583,17 @@ class AIImageServer:
                 image1=request.images[0],
                 image2=request.images[1],
                 image3=request.images[2],
+                input_video_list=request.videos,
             )
 
             # 通过 HTTP 提交任务
-            response = queue_prompt(prompt_json, self.client_id, prompt_id)
+            response = queue_prompt(prompt_json, request.client_id, prompt_id)
             if response is not None:
                 if response.code == 200:
                     self.running_request[prompt_id] = request
                 # response_body = response.read()
                 return {
-                    "prompt_id": self.prompt_id,
+                    "prompt_id": prompt_id,
                     "code": response.code,
                     "message": response.msg,
                     "parameters": request.model_dump(),
@@ -545,7 +601,7 @@ class AIImageServer:
                 }
 
             return {
-                "prompt_id": self.prompt_id,
+                "prompt_id": prompt_id,
                 "code": http.client.INTERNAL_SERVER_ERROR,
                 "message": f"internal server error",
                 "parameters": request.model_dump(),
@@ -565,19 +621,32 @@ class AIImageServer:
                     "prompt_id": request.prompt_id,
                 }
 
-        def find_output_file(request_id: str):
+        def find_output_file(request_id: str, _path: str = None, _search_before=False):
             # 查找图像文件
-            func = common_functions['get_today_output_directory']
-            files = list(Path(func()).glob(f"*_{request_id}_*.*"))
+            if _path is None:
+                func = common_functions['get_today_output_directory']
+                _path = func()
+            files = list(Path(_path).glob(f"*_{request_id}_*.*"))
             found_files = []
             is_video = False
             for f in files:
-                if f.name.endswith("[-1].png"):
+                if f.name.endswith("_[-1].png"):
                     continue
                 if f.name.endswith(".png") or f.name.endswith(".mp4"):
                     found_files.append(f)
                     is_video = f.name.endswith(".mp4")
                     break
+
+            if len(found_files) == 0 and _search_before:
+                days = 90
+                while days > 0:
+                    before_func = common_functions['get_before_output_directory']
+                    _path = before_func(days, make_dirs=False)
+                    if os.path.exists(_path):
+                        found_files, is_video = find_output_file(request_id, _path)
+                        if len(found_files) > 0:
+                            break
+                    days -= 1
 
             return found_files, is_video
 
@@ -590,7 +659,7 @@ class AIImageServer:
 
             request_id = _get_request_id(prompt_id)
             # 查找图像文件
-            output_files, is_video = find_output_file(request_id)
+            output_files, is_video = find_output_file(request_id, _search_before=True)
 
             if not output_files:
                 raise HTTPException(status_code=404, detail="文件未找到")
@@ -602,6 +671,108 @@ class AIImageServer:
                 media_type="video/mp4" if is_video else "image/png",
                 filename=file_name
             )
+
+        @self.app.get("/api/download/{file_id}/stream")
+        async def streaming_download(
+                file_id: str,
+                chunk_size: int = 8192,
+                buffer_size: int = 1024 * 1024,  # 1MB缓冲
+                enable_compression: bool = False
+        ):
+            """
+            增强版流式传输，支持更多参数
+            """
+            import time
+
+            # 查找文件
+            if file_id.startswith("last_frame_of:"):
+                _list = [file_id]
+                find_last_frame(_list)
+                output_file = Path(_list[0])
+                prompt_id = file_id[len("last_frame_of:"):]
+                request_id = _get_request_id(prompt_id)
+            else:
+                prompt_id = file_id
+                request_id = _get_request_id(prompt_id)
+                output_files, _ = find_output_file(request_id, _search_before=True)
+                if not output_files:
+                    raise HTTPException(status_code=404, detail="文件未找到")
+
+                output_file = output_files[0]
+
+            file_size = output_file.stat().st_size
+            start_time = time.time()
+
+            async def async_file_iterator():
+                """异步文件迭代器，支持进度跟踪"""
+                total_sent = 0
+                buffer = bytearray()
+
+                async with aiofiles.open(output_file, 'rb') as file:
+                    while True:
+                        chunk = await file.read(chunk_size)
+                        if not chunk:
+                            break
+
+                        buffer.extend(chunk)
+                        total_sent += len(chunk)
+
+                        # 当缓冲区达到指定大小时发送
+                        if len(buffer) >= buffer_size:
+                            yield bytes(buffer)
+                            buffer.clear()
+
+                        # 可选：添加延迟以控制传输速度
+                        # await asyncio.sleep(0.001)  # 1ms延迟
+
+                        # 记录进度（可选，可以记录到数据库）
+                        progress = (total_sent / file_size) * 100
+
+                        # 每10%输出一次日志
+                        if int(progress) % 10 == 0 and progress > 0:
+                            elapsed = time.time() - start_time
+                            # speed = total_sent / elapsed / 1024  # KB/s
+                            logger.info(f"流式传输进度: {progress:.1f}%")
+
+                    # 发送剩余数据
+                    if buffer:
+                        yield bytes(buffer)
+
+            # 设置响应头
+            headers = {
+                "Content-Disposition": f'attachment; filename="stream_{request_id}{output_file.suffix}"',
+                "Content-Length": str(file_size),
+                "X-File-Size": str(file_size),
+                "X-File-Name": output_file.name,
+                "X-Request-ID": request_id,
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+                "Expires": "0"
+            }
+
+            if enable_compression:
+                headers["Content-Encoding"] = "gzip"
+
+            media_type = get_mime_type(output_file.suffix)
+
+            from fastapi.responses import StreamingResponse
+            return StreamingResponse(
+                async_file_iterator(),
+                media_type=media_type,
+                headers=headers
+            )
+
+        def get_mime_type(extension: str) -> str:
+            """根据扩展名获取MIME类型"""
+            mime_types = {
+                '.png': 'image/png',
+                '.jpg': 'image/jpeg',
+                '.jpeg': 'image/jpeg',
+                '.webp': 'image/webp',
+                '.gif': 'image/gif',
+                '.mp4': 'video/mp4',
+            }
+            return mime_types.get(extension.lower(), 'application/octet-stream')
 
         @self.app.get("/api/jobs/{prompt_id}")
         async def get_jobs_status(prompt_id: str):
@@ -643,16 +814,23 @@ class AIImageServer:
                     end_time = f"{job['execution_end_time']}"
                 filename = ''
                 filepath = ''
-                is_video = _request.seconds > 0
+                video_concat = _request.videos is not None
+                is_video = _request.seconds > 0 or video_concat
                 if is_video:
                     # videos, _ = await get_output_video_from_history(prompt_id, history=history[prompt_id])
-                    videos = _get_output_video_from_job(job)
+                    if video_concat:
+                        videos = _get_output_video_from_job(job, key='text')
+                    else:
+                        videos = _get_output_video_from_job(job)
                     if videos is not None and isinstance(videos, dict):
                         no = 0
                         for node_id in videos:
                             for video_data in videos[node_id]:
                                 # 转移视频
-                                ori_file = video_data['fullpath']
+                                if isinstance(video_data, str):
+                                    ori_file = video_data
+                                else:
+                                    ori_file = video_data['fullpath']
                                 filename_no_ext = f'{datetime.now().strftime("%Y%m%d_%H%M%S")}_{_request.seed}_{request_id}_{no:05d}'
                                 filename = f'{filename_no_ext}.mp4'
                                 func = common_functions['get_today_output_directory']
@@ -724,7 +902,10 @@ class AIImageServer:
                 end_time = f"{_get_datetime_now_utc()}"
                 error_msg = f"unknown failure."
                 if 'execution_error' in job:
-                    error_msg = job['execution_error']
+                    if isinstance(job['execution_error'], dict) and 'exception_message' in job['execution_error']:
+                        error_msg = job['execution_error']['exception_message']
+                    else:
+                        error_msg = job['execution_error']
                 if 'execution_end_time' in job:
                     end_time = f"{job['execution_end_time']}"
                 return {
@@ -748,13 +929,15 @@ class AIImageServer:
             """
             获取服务器统计信息
             """
-            func = common_functions['get_today_output_directory']
-            output_dir = Path(func())
-            image_files = list(output_dir.glob("*.png"))
-            total_size = sum(f.stat().st_size for f in output_dir.rglob("*") if f.is_file())
+            output_dir = Path(folder_paths.get_output_directory())
+            extensions = ['png', 'jpg', 'jpeg', 'mp4']
+            files = []
+            for ext in extensions:
+                files.extend(output_dir.rglob(f"*.{ext}"))
+            total_size = sum(f.stat().st_size for f in files if f.is_file())
 
             return {
-                "total_images": len(image_files),
+                "total_files": len(files),
                 "storage_used_mb": total_size / (1024 * 1024),
                 "server_status": "running" if self.is_running else "stopped",
                 "uptime": self.get_uptime(),

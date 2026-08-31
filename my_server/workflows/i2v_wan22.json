@@ -1,0 +1,506 @@
+{
+  "1": {
+    "inputs": {
+      "sage_attention": "auto",
+      "allow_compile": false,
+      "model": [
+        "29",
+        0
+      ]
+    },
+    "class_type": "PathchSageAttentionKJ",
+    "_meta": {
+      "title": "低噪声-Patch Sage Attention KJ"
+    }
+  },
+  "7": {
+    "inputs": {
+      "enable_fp16_accumulation": true,
+      "model": [
+        "1",
+        0
+      ]
+    },
+    "class_type": "ModelPatchTorchSettings",
+    "_meta": {
+      "title": "Model Patch Torch Settings"
+    }
+  },
+  "29": {
+    "inputs": {
+      "model": [
+        "84",
+        0
+      ]
+    },
+    "class_type": "wanBlockSwap",
+    "_meta": {
+      "title": "Wan2.1块交换"
+    }
+  },
+  "30": {
+    "inputs": {
+      "samples": [
+        "216",
+        0
+      ],
+      "vae": [
+        "51",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE解码"
+    }
+  },
+  "51": {
+    "inputs": {
+      "vae_name": "wan_2.1_vae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "加载VAE"
+    }
+  },
+  "69": {
+    "inputs": {
+      "shift": 5.000000000000001,
+      "model": [
+        "7",
+        0
+      ]
+    },
+    "class_type": "ModelSamplingSD3",
+    "_meta": {
+      "title": "采样算法（SD3）"
+    }
+  },
+  "84": {
+    "inputs": {
+      "unet_name": "Wan2.2_Remix_NSFW_i2v_14b_low_lighting_v2.0.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "UNet加载器"
+    }
+  },
+  "85": {
+    "inputs": {
+      "clip_name": "umt5_xxl_fp16.safetensors",
+      "type": "wan",
+      "device": "cpu"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "加载CLIP"
+    }
+  },
+  "97": {
+    "inputs": {
+      "text": [
+        "227",
+        0
+      ],
+      "嵌入提示词": null,
+      "clip": [
+        "85",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "正向"
+    }
+  },
+  "98": {
+    "inputs": {
+      "width": [
+        "219",
+        1
+      ],
+      "height": [
+        "219",
+        2
+      ],
+      "length": 81,
+      "batch_size": 1,
+      "positive": [
+        "97",
+        0
+      ],
+      "negative": [
+        "218",
+        0
+      ],
+      "vae": [
+        "51",
+        0
+      ],
+      "start_image": [
+        "219",
+        0
+      ]
+    },
+    "class_type": "WanImageToVideo",
+    "_meta": {
+      "title": "Wan图像到视频"
+    }
+  },
+  "115": {
+    "inputs": {
+      "ckpt_name": "rife47.pth",
+      "clear_cache_after_n_frames": 8,
+      "multiplier": 2,
+      "fast_mode": true,
+      "ensemble": true,
+      "scale_factor": 1,
+      "frames": [
+        "116",
+        0
+      ]
+    },
+    "class_type": "RIFE VFI",
+    "_meta": {
+      "title": "RIFE VFI (recommend rife47 and rife49)"
+    }
+  },
+  "116": {
+    "inputs": {
+      "purge_cache": true,
+      "purge_models": true,
+      "anything": [
+        "30",
+        0
+      ]
+    },
+    "class_type": "LayerUtility: PurgeVRAM V2",
+    "_meta": {
+      "title": "图层工具：清除VRAM V2"
+    }
+  },
+  "117": {
+    "inputs": {
+      "frame_rate": 32,
+      "loop_count": 0,
+      "filename_prefix": "i2v/20260219013458",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": false,
+      "trim_to_audio": true,
+      "pingpong": false,
+      "save_output": true,
+      "images": [
+        "115",
+        0
+      ]
+    },
+    "class_type": "VHS_VideoCombine",
+    "_meta": {
+      "title": "Video Combine 🎥🅥🅗🅢"
+    }
+  },
+  "122": {
+    "inputs": {
+      "indexes": "-1",
+      "images": [
+        "115",
+        0
+      ]
+    },
+    "class_type": "GetImagesFromBatchIndexed",
+    "_meta": {
+      "title": "从批次获取最后一张图像"
+    }
+  },
+  "209": {
+    "inputs": {
+      "image_path_or_URL": "",
+      "image": ""
+    },
+    "class_type": "AILab_LoadImageSimple",
+    "_meta": {
+      "title": "加载图像 简单(RMBG) 🖼️"
+    }
+  },
+  "210": {
+    "inputs": {
+      "unet_name": "Wan2.2_Remix_NSFW_i2v_14b_high_lighting_v2.0.safetensors",
+      "weight_dtype": "fp8_e4m3fn"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "UNet加载器"
+    }
+  },
+  "211": {
+    "inputs": {
+      "model": [
+        "210",
+        0
+      ]
+    },
+    "class_type": "wanBlockSwap",
+    "_meta": {
+      "title": "Wan2.1块交换"
+    }
+  },
+  "212": {
+    "inputs": {
+      "sage_attention": "auto",
+      "allow_compile": false,
+      "model": [
+        "211",
+        0
+      ]
+    },
+    "class_type": "PathchSageAttentionKJ",
+    "_meta": {
+      "title": "高噪声-Patch Sage Attention KJ"
+    }
+  },
+  "213": {
+    "inputs": {
+      "enable_fp16_accumulation": true,
+      "model": [
+        "212",
+        0
+      ]
+    },
+    "class_type": "ModelPatchTorchSettings",
+    "_meta": {
+      "title": "Model Patch Torch Settings"
+    }
+  },
+  "214": {
+    "inputs": {
+      "shift": 5.000000000000001,
+      "model": [
+        "213",
+        0
+      ]
+    },
+    "class_type": "ModelSamplingSD3",
+    "_meta": {
+      "title": "采样算法（SD3）"
+    }
+  },
+  "215": {
+    "inputs": {
+      "add_noise": "enable",
+      "noise_seed": 214,
+      "steps": 6,
+      "cfg": 1,
+      "sampler_name": "euler",
+      "scheduler": "normal",
+      "start_at_step": 0,
+      "end_at_step": 2,
+      "return_with_leftover_noise": "enable",
+      "model": [
+        "214",
+        0
+      ],
+      "positive": [
+        "98",
+        0
+      ],
+      "negative": [
+        "98",
+        1
+      ],
+      "latent_image": [
+        "98",
+        2
+      ]
+    },
+    "class_type": "KSamplerAdvanced",
+    "_meta": {
+      "title": "K采样器（高级）"
+    }
+  },
+  "216": {
+    "inputs": {
+      "add_noise": "disable",
+      "noise_seed": 214,
+      "steps": 6,
+      "cfg": 1,
+      "sampler_name": "euler",
+      "scheduler": "normal",
+      "start_at_step": 2,
+      "end_at_step": 10000,
+      "return_with_leftover_noise": "disable",
+      "model": [
+        "69",
+        0
+      ],
+      "positive": [
+        "98",
+        0
+      ],
+      "negative": [
+        "98",
+        1
+      ],
+      "latent_image": [
+        "215",
+        0
+      ]
+    },
+    "class_type": "KSamplerAdvanced",
+    "_meta": {
+      "title": "K采样器（高级）"
+    }
+  },
+  "217": {
+    "inputs": {
+      "filename_prefix": "i2v/20260219013458",
+      "images": [
+        "122",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "保存图像"
+    }
+  },
+  "218": {
+    "inputs": {
+      "text": "色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走, censored, mosaic censoring, bar censor, pixelated, glowing, bloom, blurry, day, out of focus, low detail, bad anatomy, ugly, overexposed, underexposed, distorted face, extra limbs, cartoonish, 3d render artifacts, duplicate people, unnatural lighting, bad composition, missing shadows, low resolution, poorly textured, glitch, noise, grain, static, motionless, still frame, overall grayish, worst quality, low quality, JPEG compression artifacts, subtitles, stylized, artwork, painting, illustration, cluttered background, many people in background, three legs, walking backward, zoom out, zoom in, mouth speaking, moving mouth, talking, speaking, mute speaking, unnatural skin tone, discolored eyelid, red eyelids, red upper eyelids, no red eyeshadow, closed eyes, no wide-open innocent eyes, poorly drawn hands, extra fingers, fused fingers, poorly drawn face, deformed, disfigured, malformed limbs, thighs, fog, mist, voluminous eyelashes, blush,",
+      "嵌入提示词": null,
+      "clip": [
+        "85",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP文本编码"
+    }
+  },
+  "219": {
+    "inputs": {
+      "width": 512,
+      "height": 512,
+      "upscale_method": "lanczos",
+      "keep_proportion": "crop",
+      "pad_color": "0, 0, 0",
+      "crop_position": "center",
+      "divisible_by": 32,
+      "device": "cpu",
+      "image": [
+        "209",
+        0
+      ]
+    },
+    "class_type": "ImageResizeKJv2",
+    "_meta": {
+      "title": "Resize Image v2"
+    }
+  },
+  "221": {
+    "inputs": {
+      "purge_cache": true,
+      "purge_models": true,
+      "anything": [
+        "226",
+        0
+      ]
+    },
+    "class_type": "LayerUtility: PurgeVRAM V2",
+    "_meta": {
+      "title": "图层工具：清除VRAM V2"
+    }
+  },
+  "222": {
+    "inputs": {
+      "text": [
+        "227",
+        0
+      ]
+    },
+    "class_type": "ShowText|pysssss",
+    "_meta": {
+      "title": "Show Text 🐍"
+    }
+  },
+  "223": {
+    "inputs": {
+      "action": "append",
+      "tidy_tags": "yes",
+      "text_a": [
+        "224",
+        0
+      ],
+      "text_b": [
+        "225",
+        0
+      ],
+      "text_c": ""
+    },
+    "class_type": "StringFunction|pysssss",
+    "_meta": {
+      "title": "String Function 🐍"
+    }
+  },
+  "224": {
+    "inputs": {
+      "positive": "结合我加载的图片，给出接下来的提示词描述。要求动作连贯，剧情合理。并提供{}秒拆解，时长符合动作的逻辑，提示词要简洁,不要任何额外的解释词，仅输出提示词部分。\n\n光源类型 为日光、人工光、月光、实用光、火光、荧光、阴天光、混合光、晴天光等\n光线类型 可以描述为柔光、硬光、顶光、侧光、背光、底光、边缘光、剪影、低对比度、高对比度\n时间段 白天、夜晚、黄昏、日落、黎明、日出。\n景别 特写、近景、中景，中近景、中全景、全景、广角\n描述构图类型 中心构图、平衡构图、侧重构图、对称构图、短边构图\n镜头描述-镜头尺寸 中焦距、广角、长焦、望远、超广角-鱼眼\n镜头描述-镜头角度 过肩角度、高角度、低角度、倾斜角度、航拍、俯视角度\n镜头描述-镜头类型 单人镜头、双人镜头、三人镜头、群像镜头、定场镜头\n色调 暖色调、冷色调、高饱和度、低饱和度等。\n运动描述 跳舞、跑步、滑滑板、踢足球、网球、乒乓、滑雪、篮球、橄榄球、顶碗舞、侧手翻等。\n人物情绪 愤怒、恐惧、高兴、悲伤、惊讶。\n基础运镜 镜头推进、镜头拉远、镜头向右移动、镜头向左移动、 镜头上摇 高级运镜 手持镜头、复合运镜、跟随镜头、环绕运镜\n风格化-视觉风格 毛毡风格、3D卡通、像素风格、木偶动画、3D游戏、黏土风格、二次元、水彩画、黑白动画、油画风格 风格化-特效镜头 移轴摄影、延时拍摄\n人物身体衣着状态 已穿衣服、仅穿内衣内裤、仅穿内衣、仅穿内裤、赤裸全身\n",
+      "嵌入提示词": null
+    },
+    "class_type": "easy positive",
+    "_meta": {
+      "title": "推理提示词"
+    }
+  },
+  "225": {
+    "inputs": {
+      "positive": "",
+      "嵌入提示词": null
+    },
+    "class_type": "easy positive",
+    "_meta": {
+      "title": "主提示词"
+    }
+  },
+  "226": {
+    "inputs": {
+      "text": [
+        "223",
+        0
+      ],
+      "model": "Qwen3-VL-4B-Instruct",
+      "quantization": "none",
+      "keep_model_loaded": false,
+      "temperature": 0.7,
+      "max_new_tokens": 2048,
+      "min_pixels": 125440,
+      "max_pixels": 334768,
+      "seed": 390,
+      "attention": "eager",
+      "image": [
+        "209",
+        0
+      ]
+    },
+    "class_type": "Qwen3_VQA",
+    "_meta": {
+      "title": "Qwen3 VQA"
+    }
+  },
+  "227": {
+    "inputs": {
+      "delimiter": "",
+      "text_list": [
+        "221",
+        0
+      ]
+    },
+    "class_type": "Text List to Text",
+    "_meta": {
+      "title": "文本列表到文本"
+    }
+  }
+}
