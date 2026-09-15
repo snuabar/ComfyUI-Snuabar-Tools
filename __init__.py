@@ -15,6 +15,7 @@ from sd_upscale_assistant import SDUpscaleAssistant
 from rife_interpolate import RIFEInterpolateNode
 from prompt_save_node import SavePromptNode
 from prompt_read_node import ReadPromptNode
+from image_load_by_index import LoadImageByIndexNode
 
 
 class SnuabarToolsExtension(ComfyExtension):
@@ -36,6 +37,7 @@ class SnuabarToolsExtension(ComfyExtension):
             RIFEInterpolateNode,
             SavePromptNode,
             ReadPromptNode,
+            LoadImageByIndexNode,
         ]
 
 
