@@ -11,14 +11,15 @@ class SavePromptNode(io.ComfyNode):
     """
     保存 Prompt 到 array 类型的 JSON 文件。
 
-    每条记录是一个 map：{"key": <键>, "value": <值>}
-      - key  ：例如图片路径（可自由指定）
-      - value：例如生成用的 prompt（支持多行，写入时由 JSON 自动转义换行）
+    每条记录是一个 map：{"key": <键>, "value": <值1>, "value2": <值2>}
+      - key   ：例如图片路径（可自由指定）
+      - value ：例如生成用的 prompt（支持多行，写入时由 JSON 自动转义换行）
+      - value2：第二个值（可选，缺省空串；旧记录无此字段时读取回空串）
 
     文件格式示例：
         [
-          {"key": "img/001.png", "value": "a cat sitting on a chair"},
-          {"key": "img/002.png", "value": "a dog running on the beach"}
+          {"key": "img/001.png", "value": "a cat ...", "value2": "high quality"},
+          {"key": "img/002.png", "value": "a dog ...", "value2": "low quality"}
         ]
     """
 
@@ -40,7 +41,15 @@ class SavePromptNode(io.ComfyNode):
                     display_name="值 (Prompt)",
                     default="",
                     multiline=True,
-                    tooltip="每条记录的 value（例如生成用的 prompt）。支持多行，写入时会自动转义换行。",
+                    tooltip="每条记录的第一个 value（例如生成用的 prompt）。支持多行，写入时会自动转义换行。",
+                ),
+                io.String.Input(
+                    id="value2",
+                    display_name="值2 (Prompt2)",
+                    default="",
+                    multiline=True,
+                    optional=True,
+                    tooltip="每条记录的第二个 value（可选）。同一个 key 下的第二个值，支持多行；留空则存为空字符串。",
                 ),
                 io.String.Input(
                     id="directory",
@@ -61,6 +70,15 @@ class SavePromptNode(io.ComfyNode):
                     options=["append", "overwrite"],
                     default="append",
                     display_name="写入类型",
+                    # 必须设 optional=True —— 前端控件顺序的控制开关：
+                    # comfy_api 会把本 inputs 列表拆成 required / optional 两段
+                    # （见 comfy_api/latest/_io.py 的 create_input_dict_v1 /
+                    # add_to_dict_v1），前端「required 段整体先渲染，optional 段
+                    # 整体后渲染」，声明顺序只在同一段内生效。
+                    # 不设的话它进 required 段，会被排到同在 optional 段的 value2
+                    # 前面 → 控件顺序错乱。要让顺序 = 声明顺序，本列表里只应保留
+                    # key / value 两个 required，其余全部 optional。
+                    optional=True,
                     tooltip="append=追加到数组末尾；overwrite=覆盖整个文件（数组仅保留本条）。",
                 ),
             ],
@@ -69,15 +87,17 @@ class SavePromptNode(io.ComfyNode):
                 io.Int.Output(id="count", display_name="条目数"),
             ],
             is_output_node=True,  # 输出未连接时也始终执行（等价 V1 的 OUTPUT_NODE=True）
-            description="将 key-value 以 {key,value} 形式保存到 array 类型的 JSON 文件中。",
+            description="将 key 与两个 value 以 {key,value,value2} 形式保存到 array 类型的 JSON 文件中（value2 可选）。",
         )
 
     @classmethod
-    def execute(cls, key, value, directory, filename, write_mode):
+    def execute(cls, key, value, value2, directory, filename, write_mode):
         directory = resolve_dir(directory)
         filename = ensure_json_ext(filename)
         path = os.path.join(directory, filename)
-        count = write_entry(path, key, value, write_mode)
+        value2 = value2 or ""  # optional 端口未连线/未填写时可能传 None
+        write_mode = write_mode or "append"  # 同上；None 会被 write_entry 当成 append
+        count = write_entry(path, key, value, write_mode, value2=value2)
         return io.NodeOutput(path, count)
 
     @classmethod

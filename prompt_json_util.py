@@ -78,12 +78,15 @@ def read_array(path):
     return [data]
 
 
-def write_entry(path, key, value, mode):
-    """向 array 类型 JSON 写入一条 {key, value} 记录。
+def write_entry(path, key, value, mode, value2=""):
+    """向 array 类型 JSON 写入一条 {key, value, value2} 记录。
 
     mode:
       - "overwrite": 覆盖整个文件（结果数组仅含本条）
       - "append"   : 追加到数组末尾
+
+    value2 为可选的第二个值，缺省空串。旧文件中没有 value2 字段的记录不受影响
+    （读取端用 .get("value2", "") 回退为空串）。
 
     返回写入后数组的条目数。
     换行在 json.dump 时会自动转义为 \\n，无需手动处理。
@@ -98,7 +101,7 @@ def write_entry(path, key, value, mode):
         if not isinstance(data, list):
             data = [data]
 
-    data.append({"key": key, "value": value})
+    data.append({"key": key, "value": value, "value2": value2})
 
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
