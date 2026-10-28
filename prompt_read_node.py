@@ -1,11 +1,32 @@
 import os
+import threading
 
 from comfy_api.latest import io
+# Hidden 不在 io 的公开 __all__ 里（io = _io_public，仅 from ._io import *），
+# 只能通过私有模块拿到。声明 hidden=[Hidden.unique_id] 后，框架才会往
+# hidden_inputs 填 UNIQUE_ID，cls.hidden.unique_id 才会非 None（否则永远 None）。
+from comfy_api.latest._io import Hidden
+
 from prompt_json_util import (
     ensure_json_ext,
     read_array,
     DEFAULT_DIR,
 )
+
+# 按节点 unique_id 缓存「上次 execute 解析出的真实 JSON 路径」。
+# 用途：fingerprint_inputs 阶段，若 file_path 是「连线输入」，框架传入的是 None
+# （execution_list=None 导致 mark_missing），此时用上次 execute 缓存的真实路径
+# 去 stat 文件，才能正确检测外部改动。widget 直填的路径会优先于缓存使用。
+_RESOLVED_PATH_CACHE: dict[str, str] = {}
+_CACHE_LOCK = threading.Lock()
+
+
+def _get_uid(cls) -> str | None:
+    """从 new-API 注入的 hidden 里取节点唯一 ID（多实例隔离用）。"""
+    hidden = getattr(cls, "hidden", None)
+    if hidden is None:
+        return None
+    return getattr(hidden, "unique_id", None)
 
 
 class ReadPromptNode(io.ComfyNode):
@@ -28,6 +49,7 @@ class ReadPromptNode(io.ComfyNode):
             display_name="读取Prompt(JSON)",
             category="SnuabarTools",
             description="从 array 类型的 JSON 文件读取指定索引的 {key,value,value2} 条目，分别输出 key、value 与 value2。",
+            hidden=[Hidden.unique_id],  # 声明后框架注入 UNIQUE_ID，cls.hidden.unique_id 才非 None
             inputs=[
                 # 注意：本节点两个输入都保持 required（不设 optional）。
                 # comfy_api 会把 inputs 拆成 required / optional 两段，前端让 required
@@ -58,13 +80,16 @@ class ReadPromptNode(io.ComfyNode):
 
     @classmethod
     def execute(cls, file_path, index):
-        path = (file_path or "").strip()
-        if not path:
-            path = os.path.join(DEFAULT_DIR, "prompts.json")
-        path = ensure_json_ext(path)
+        path = cls._resolve_path(file_path)
 
         if not os.path.isfile(path):
             raise FileNotFoundError(f"未找到 JSON 文件：{path}")
+
+        # 缓存解析出的真实路径，供 fingerprint_inputs 在「连线输入」场景下使用
+        uid = _get_uid(cls)
+        if uid is not None:
+            with _CACHE_LOCK:
+                _RESOLVED_PATH_CACHE[uid] = path
 
         data = read_array(path)
         if not isinstance(data, list) or len(data) == 0:
@@ -86,3 +111,52 @@ class ReadPromptNode(io.ComfyNode):
         value2 = item.get("value2", "")
         # JSON 已自动将转义的换行恢复为真实换行
         return io.NodeOutput(key, value, value2)
+
+    @classmethod
+    def fingerprint_inputs(cls, **kwargs) -> str:
+        """让节点在「入参不变、但 JSON 文件被外部修改」时也重新读取。
+
+        等价于 V1 的 IS_CHANGED：框架会比较本次返回值与上次是否相同，
+        相同则跳过执行（直接复用缓存），不同才会重新跑 execute。
+
+        把「文件路径 + 修改时间(mtime_ns) + 大小(size)」编进指纹：
+          - JSON 文件被改（mtime/size 变化）→ 指纹变 → 重新读取；
+          - 文件没动 → 指纹不变 → 不重跑（保持原缓存，省一次磁盘读）。
+
+        关键坑：file_path 若是从别的节点「连线」过来的，fingerprint 阶段
+        （execution_list=None）会拿到 None，无法直接 stat。此时改用 execute
+        上次缓存的真实路径；若连缓存都没有（首跑），再退回默认路径。
+        widget 直填的路径则优先直接使用，最准确。
+        """
+        path = cls._resolve_fingerprint_path(**kwargs)
+        if path and os.path.isfile(path):
+            st = os.stat(path)
+            return f"{path}|{st.st_mtime_ns}|{st.st_size}"
+        # 文件不存在：返回稳定指纹（不要含时间相关值，否则会每次都重跑）
+        return path or "<no-path>"
+
+    @classmethod
+    def _resolve_path(cls, file_path):
+        """execute 用：解析成最终要读取的 JSON 路径（含默认值回退）。"""
+        path = (file_path or "").strip()
+        if not path:
+            path = os.path.join(DEFAULT_DIR, "prompts.json")
+        return ensure_json_ext(path)
+
+    @classmethod
+    def _resolve_fingerprint_path(cls, **kwargs):
+        """fingerprint 用：决定本次要 stat 哪个文件。
+
+        优先级：1) 传入的 file_path（widget 直填）→ 2) execute 缓存的真实路径
+        （连线输入场景）→ 3) 默认路径。
+        """
+        fp = (kwargs.get("file_path") or "").strip()
+        if fp:
+            return ensure_json_ext(fp)
+        uid = _get_uid(cls)
+        if uid is not None:
+            with _CACHE_LOCK:
+                cached = _RESOLVED_PATH_CACHE.get(uid)
+            if cached:
+                return cached
+        return ensure_json_ext(os.path.join(DEFAULT_DIR, "prompts.json"))
